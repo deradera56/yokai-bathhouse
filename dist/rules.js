@@ -40,7 +40,8 @@ const Bath = (() => {
   };
   const step = (s,n,a) => {
     if(!Array.isArray(a)||!actions(s,n).some(x=>x.length===a.length&&x.every((v,i)=>v===a[i]))) return s;
-    const z=structuredClone(s), [type,i,k,j]=a;
+    const z={...s,queue:s.queue.map(p=>({...p})),baths:s.baths.map(b=>({...b,people:b.people.map(p=>({...p}))}))};
+    const [type,i,k,j]=a;
     if(type==='seat') z.baths[i].people.push({id:z.queue.shift().id,streak:0});
     if(type==='heat') z.baths[i].base+=k;
     if(type==='move') z.baths[j].people.push(z.baths[i].people.splice(k,1)[0]);
@@ -75,7 +76,22 @@ const Bath = (() => {
       return null;
     }
     const route=search(s);
-    return route?{status:'move',action:route[0]}:{status:budget<=0?'unknown':'blocked'};
+    if(route)return {status:'move',action:route[0]};
+    if(budget>0)return {status:'blocked'};
+    // Try promising boards across each turn when depth-first search spends its budget.
+    let layer=[[s,null]];
+    for(let t=s.turn;t<n[4]&&layer.length;t++){
+      const next=new Map();
+      for(const [z,first] of layer)for(const a of actions(z,n)){
+        const after=step(z,n,a);
+        if(after.served>=n[5])return {status:'move',action:first??a};
+        if(done(after,n)||!possible(after))continue;
+        const key=JSON.stringify(after);
+        if(!next.has(key))next.set(key,[after,first??a]);
+      }
+      layer=[...next.values()].sort((a,b)=>rank(b[0])-rank(a[0])).slice(0,180);
+    }
+    return {status:'unknown'};
   }
   return {guests,nights,temp,happy,start,step,actions,done,hint};
 })();

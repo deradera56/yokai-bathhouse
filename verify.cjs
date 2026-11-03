@@ -42,5 +42,15 @@ assert.equal(q.queue[0].age,0);
 for(let i=0;i<2;i++)q=B.step(q,dry,['wait']);
 assert.equal(q.queue[0].age,2);
 assert.equal(B.step(q,dry,['wait']).lost,1);
+assert.equal(B.hint(B.step(q,dry,['wait']),dry).status,'blocked');
+const waves=B.nights[9];
+let w=B.step(B.start(waves),waves,['heat',0,-1]);
+while(w.served<waves[5]){
+  const h=B.hint(w,waves);
+  assert.equal(h.status,'move','Hint should recover after cooling Bath 1 on Night 10');
+  const next=B.step(w,waves,h.action);
+  assert.notEqual(next,w);
+  w=next;
+}
 }
 module.exports=solve;

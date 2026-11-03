@@ -1,5 +1,5 @@
 (() => {
-const {guests,nights,temp,happy,start,step,actions,done}=Bath;
+const {guests,nights,temp,start,step,actions,done}=Bath;
 const app=document.querySelector('#app');
 const key='yokai-bathhouse-v1';
 function read(){try{return JSON.parse(localStorage.getItem(key))||{}}catch{return {}}}
@@ -19,7 +19,7 @@ const int=(v,min,max)=>Number.isInteger(v)&&v>=min&&v<=max;
 function validShift(value){
  if(!int(value?.index,0,nights.length-1)||!unlocked(value.index))return false;
  const level=nights[value.index], q=value.s, total=level[2].length;
- const validId=p=>p&&Object.hasOwn(guests,p.id);
+ const validId=p=>p&&typeof p.id==='string'&&Object.prototype.hasOwnProperty.call(guests,p.id);
  return q&&int(q.turn,0,level[4]-1)&&int(q.served,0,total)&&int(q.lost,0,total)&&
    Array.isArray(q.queue)&&q.queue.every(p=>validId(p)&&int(p.age,0,2))&&
    Array.isArray(q.baths)&&q.baths.length===level[3].length&&q.baths.every(b=>b&&int(b.base,-1,1)&&
@@ -27,17 +27,22 @@ function validShift(value){
    q.served+q.lost+q.queue.length+q.baths.reduce((a,b)=>a+b.people.length,0)===total&&!done(q,level);
 }
 let suspended=validShift(data.shift)?data.shift:null, revision=data.revision??null, conflict=false;
-function save(){
+function save(allowEmpty=false){
+ const shift=view==='play'?{index,s}:suspended;
+ const write=()=>{
  try{
    const latest=read();
    best=best.map((v,i)=>Math.max(v,score(latest,i)));
-   const owns=(latest.revision??null)===revision;
+   const owns=(latest.revision??null)===revision||(allowEmpty&&!latest.shift);
    conflict=!owns;
    const nextRevision=owns?String(Date.now())+'-'+Math.random():latest.revision;
-   localStorage.setItem(key,JSON.stringify({best,revision:nextRevision,shift:owns?(view==='play'?{index,s}:suspended):latest.shift}));
+   localStorage.setItem(key,JSON.stringify({best,revision:nextRevision,shift:owns?shift:latest.shift}));
    if(owns)revision=nextRevision;
    saveFailed=false;
  }catch{saveFailed=true}
+ };
+ if(!navigator.locks?.request){write();return Promise.resolve()}
+ return navigator.locks.request(key,write).catch(()=>{saveFailed=true});
 }
 const title=()=>tr('妖怪銭湯','Yokai Bathhouse');
 function top(){return `<header class="top"><span class="brand">♨ YŌKAI BATHHOUSE</span><div class="tools">${view==='menu'?'':`<button data-nav="menu">${tr('営業日一覧','Night list')}</button>`}<button data-nav="language" aria-label="${tr('Switch to English','日本語に切り替え')}">${tr('English','日本語')}</button></div></header>`}
@@ -100,12 +105,17 @@ function bathScene(b,i){
  const t=temp(b);
  return `<div class="bath-scene" aria-hidden="true"><div class="bath-water"></div>
  ${t>=0?`<div class="vapor">${'<i></i>'.repeat(t===1?3:1)}</div>`:'<div class="ice-stars">❄　·　❄</div>'}
- <div class="bathers">${b.people.map((p,k)=>`<span class="${arrival?.[0]===i&&arrival?.[1]===k?'splash':''}">${doll(p.id,happy(p,b)?'happy':'worried')}</span>`).join('')}</div><div class="bath-rim"></div></div>`;
+ <div class="bathers">${b.people.map((p,k)=>`<span class="${arrival?.[0]===i&&arrival?.[1]===k?'splash':''}">${doll(p.id,p.streak?'happy':'worried')}</span>`).join('')}</div><div class="bath-rim"></div></div>`;
+}
+function comfort(p,b){
+ if(temp(b)!==guests[p.id][4])return tr('湯温が合わない','Wrong temperature');
+ if(p.id==='H'&&b.people.length<2)return tr('相席待ち','Needs company');
+ return p.streak?tr('✓ 快適','✓ Comfy'):tr('次の手から快適','Comfy next turn');
 }
 function action(a,label,cls='',id='',accessible=''){return `<button class="${cls}" data-action="${a.join(',')}" ${id?`aria-describedby="${id}"`:''} ${accessible?`aria-label="${accessible}"`:''}>${label}</button>`}
 function hintText(){
  if(!hintResult)return index===2
-  ?tr('河童は列の先頭で案内されずに３手経つと帰ります。火車を入れたら、先に河童の席を考えましょう。天狗と火車で熱くなった湯は、海坊主で冷ませます。','Kappa leaves after three turns waiting at the front. Plan a seat for him as soon as Fire Cat enters. Sea Monk can cool the bath heated by Tengu and Fire Cat.')
+  ?tr('河童は列の先頭で案内されずに３手経つと帰ります。天狗と火車を同席させるなら、河童用に別の適温の湯船を残しましょう。火車の退浴後、適温設定の湯船で海坊主が天狗の加温を打ち消せます。','Kappa leaves after three turns waiting at the front. If Tengu and Fire Cat share a bath, keep another bath warm for Kappa. Once Fire Cat leaves, Sea Monk can cancel out Tengu’s heat in a bath set to Warm.')
   :tr('次の客の好みと、今いる客が帰ったあとの湯温を見比べましょう。','Compare what the next guest wants with how the bath will change when current guests leave.');
  const {status,action:a}=hintResult;
  if(status==='met')return tr('目標達成済みです。残りの客を迎えるか、閉店まで進めましょう。','Goal met. Serve the remaining guests or play until closing.');
@@ -123,7 +133,8 @@ function play(){
  <section class="overview" aria-label="${tr('営業状況','Shift overview')}">
  <div class="overview-top"><strong>${head?tr('次：','Next: ')+guestLabel(head.id):tr('待ち客なし','Queue empty')}</strong><span>${tr('残り','Left')} ${n()[4]-s.turn} · ${tr('目標','Goal')} ${s.served}/${n()[5]}</span></div>
  ${head?`<div class="next-wants">${tr('好み：','Wants: ')}${temperature(guests[head.id][4])}${head.id==='K'&&n()[6]?.dry?` <b class="deadline">${tr('あと','Leaves in ')}${3-head.age}${tr('手で帰る',' turns')}</b>`:''}</div>`:''}
- <div class="overview-baths">${s.baths.map((b,i)=>`<a href="#bath-${i}"><strong>${tr('湯船','Bath')} ${i+1}</strong><span>${temperature(temp(b))} · ${b.people.length}/3</span></a>`).join('')}</div></section>
+ <div class="overview-baths">${s.baths.map((b,i)=>`<a href="#bath-${i}"><strong>${tr('湯船','Bath')} ${i+1}</strong><span>${temperature(temp(b))} · ${b.people.length}/3</span></a>`).join('')}</div>
+ ${message?`<div class="overview-note">${message[lang]}</div>`:''}</section>
  <details class="queue-panel"><summary>${tr('待ち列を見る','See the queue')} · ${s.queue.length}</summary><div class="queue">${s.queue.map((p,i)=>`<span class="chip">${i+1}. ${guestLabel(p.id)} · ${temperature(guests[p.id][4])}</span>`).join('')||tr('待ち客なし','No waiting guests')}</div></details>
  ${head?`<div class="reception">${doll(head.id,head.id==='K'&&n()[6]?.dry&&head.age>=1?'worried':'calm',head.id==='K'&&n()[6]?.dry)}<div><small>${tr('暖簾の前でお待ちです','AT THE CURTAIN')}</small><strong>${name(head.id)}</strong><span>${tr('好み：','Wants: ')}${temperature(guests[head.id][4])}</span></div></div>`:''}
  <div class="hint-tools"><button data-nav="hint" aria-expanded="${hintOpen}">${hintOpen?tr('ヒントを閉じる','Hide hint'):tr('ヒント','Hint')}</button>
@@ -134,10 +145,10 @@ function play(){
  const after=canSeat?temp(step(s,n(),canSeat).baths[i]):null;
  return `<section id="bath-${i}" class="bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}"><h3>${tr('湯船','Bath')} ${i+1} · ${temperature(temp(b))}</h3><small>${tr('設定','Setting')}: ${temperature(b.base)} · ${b.people.length}/3 ${n()[6]?.lock===i?tr(' · 釜故障',' · boiler out'):''}</small>
  ${bathScene(b,i)}
- <ul class="people">${b.people.map((p,k)=>`<li>${guestLabel(p.id)} · ${temperature(guests[p.id][4])} · ${p.streak}/2 ${happy(p,b)?tr('✓ 快適','✓ Comfy'):tr('… 好みと不一致','… Uncomfortable')}${legal.filter(a=>a[0]==='move'&&a[1]===i&&a[2]===k).map(a=>` <span class="move">${action(a,tr('→ 湯船','→ Bath')+' '+(a[3]+1),'','',tr(`${name(p.id)}を湯船${a[3]+1}へ移す`,`Move ${name(p.id)} to Bath ${a[3]+1}`))}</span>`).join('')}</li>`).join('')||`<li class="muted">${tr('空席','Empty')}</li>`}</ul>
+ <ul class="people">${b.people.map((p,k)=>`<li>${guestLabel(p.id)} · ${temperature(guests[p.id][4])} · ${p.streak}/2 · ${comfort(p,b)}${legal.filter(a=>a[0]==='move'&&a[1]===i&&a[2]===k).map(a=>` <span class="move">${action(a,tr('→ 湯船','→ Bath')+' '+(a[3]+1),'','',tr(`${name(p.id)}を湯船${a[3]+1}へ移す`,`Move ${name(p.id)} to Bath ${a[3]+1}`))}</span>`).join('')}</li>`).join('')||`<li class="muted">${tr('空席','Empty')}</li>`}</ul>
  <div class="preview" id="preview-${i}">${preview===null?'':name(head.id)+' · '+tr('好み：','Wants ')+temperature(guests[head.id][4])+'<br>'+tr('この手の判定：','This turn: ')+temperature(preview)+(after!==preview?tr(' ／ 退浴後：',' / After guests leave: ')+temperature(after):'')}</div><div class="actions">${canSeat?action(canSeat,tr('案内する','Seat guest'),'primary','preview-'+i,tr(`${name(head.id)}を湯船${i+1}に案内`,`Seat ${name(head.id)} in Bath ${i+1}`)):''}${legal.filter(a=>a[0]==='heat'&&a[1]===i).map(a=>action(a,a[2]>0?tr('＋ 温める','+ Heat'):tr('− 冷ます','− Cool'),'','',tr(`湯船${i+1}を${a[2]>0?'温める':'冷ます'}`,`${a[2]>0?'Heat':'Cool'} Bath ${i+1}`))).join('')}</div></section>`;
  }).join('')}</div><div class="row">${action(['wait'],tr('１手待つ','Wait a turn'))}<button data-nav="retry">${tr('今夜をやり直す','Restart night')}</button></div>
- <p class="live muted">${message?message[lang]:''}</p>${guide()}`;
+ ${guide()}`;
 }
 function result(){
  const clear=s.served>=n()[5], final=clear&&index===11;
@@ -146,10 +157,18 @@ function result(){
 function render(){
  const oldGuide=app.querySelector('details:not(.queue-panel)');
  const queueOpen=app.querySelector('.queue-panel')?.open;
+ const steam=[...app.querySelectorAll('.bath .vapor')].map(el=>[el.closest('.bath').id,[...el.children].map(p=>p.getAnimations?.()[0]?.currentTime)]);
  if(oldGuide)guideOpen=oldGuide.open;
  document.documentElement.lang=lang?'en':'ja';document.title=title();
  app.innerHTML=top()+(view==='menu'?menu():view==='play'?play():result())+(saveFailed||conflict?`<p role="status">${saveFailed?tr('このブラウザでは進行を保存できません。','This browser could not save your progress.'):tr('別のタブの中断データを保持しています。最新の営業を再開するには、この画面を再読み込みしてください。','Another tab owns the saved shift. Reload this page to resume that shift.')}</p>`:'');
  arrival=null;
+ for(const [id,times] of steam){
+   const next=app.querySelector('#'+id+' .vapor');
+   if(next?.childElementCount===times.length){
+     // Keep the animation phase even when the view is redrawn.
+     [...next.children].forEach((p,i)=>{const a=p.getAnimations?.()[0];if(a&&times[i]!=null)a.currentTime=times[i]});
+   }
+ }
  const newGuide=app.querySelector('details:not(.queue-panel)');
  if(queueOpen&&app.querySelector('.queue-panel'))app.querySelector('.queue-panel').open=true;
  if(newGuide)newGuide.open=guideOpen;
@@ -160,24 +179,29 @@ function render(){
  }
 }
 function focusHeading(){const h=app.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true})}}
-function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';save();render();window.scrollTo(0,0);focusHeading()}
-app.addEventListener('click',e=>{
+async function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';await save(true);render();window.scrollTo(0,0);focusHeading()}
+let busy=false;
+app.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
+ if(busy)return;
+ busy=true;
+ try{
  if(b.dataset.level!==undefined){
    const i=Number(b.dataset.level);
    if(suspended&&!confirm(tr('中断中の営業を上書きしますか？','Replace your suspended shift?')))return;
-   begin(i);return;
+   await begin(i);return;
  }
  const nav=b.dataset.nav;
  if(nav==='hint'||nav==='hint-move'){
    if(nav==='hint'){hintOpen=!hintOpen;if(!hintOpen)hintResult=null}
    else hintResult=Bath.hint(s,n());
-   render();app.querySelector('[data-nav="hint"]').focus({preventScroll:true});return;
+   render();app.querySelector('[data-nav="hint"]').focus({preventScroll:true});
+   document.querySelector('#announce').textContent=hintOpen?hintText():'';return;
  }
  if(nav==='language'){lang=1-lang;try{localStorage.setItem(key+'-lang',lang?'en':'ja')}catch{}render();app.querySelector('[data-nav="language"]').focus();return}
- if(nav==='menu'){if(view==='play')suspended={index,s};view='menu';save();render();window.scrollTo(0,0);focusHeading();return}
- if(nav==='resume'&&suspended){({index,s}=suspended);suspended=null;recorded=false;message=null;view='play';save();render();window.scrollTo(0,0);focusHeading();return}
- if(nav==='retry'){if(!s.turn||confirm(tr('今夜の進行をやり直しますか？','Restart this night?')))begin(index);return}
+ if(nav==='menu'){if(view==='play'){suspended={index,s};view='menu';await save()}else view='menu';render();window.scrollTo(0,0);focusHeading();return}
+ if(nav==='resume'&&suspended){({index,s}=suspended);suspended=null;recorded=false;message=null;view='play';await save();render();window.scrollTo(0,0);focusHeading();return}
+ if(nav==='retry'){if(!s.turn||confirm(tr('今夜の進行をやり直しますか？','Restart this night?')))await begin(index);return}
  if(!b.dataset.action||view!=='play')return;
  const a=b.dataset.action.split(',').map((v,i)=>i?Number(v):v);
  const prev=s;s=step(s,n(),a);if(prev===s)return;
@@ -189,11 +213,19 @@ app.addEventListener('click',e=>{
  if(s.lost>n()[2].length-n()[5])notices.push(['残り全員を満足させても目標には届きません。今夜をやり直せます。','The goal is now out of reach. You can restart the night.']);
  message=notices.length?[0,1].map(i=>notices.map(x=>x[i]).join(' ')):null;
  if(done(s,n())&&!recorded){recorded=true;best[index]=Math.max(best[index],s.served);view='result';window.scrollTo(0,0)}
- save();render();
+ await save();render();
  document.querySelector('#announce').textContent=message?message[lang]:'';
  if(view==='result'){focusHeading();return}
- const focus=[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===b.dataset.action)||app.querySelector('.actions .primary, button[data-action="wait"]');
- focus?.focus({preventScroll:true});
+ const exact=a[0]!=='move'&&[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===b.dataset.action);
+ const bath=a[0]==='wait'?null:app.querySelector('#bath-'+a[1]);
+ const focus=exact||bath?.querySelector('.actions button')||bath?.querySelector('h3')||app.querySelector('button[data-action="wait"]');
+ if(focus){
+   if(focus.tagName==='H3')focus.tabIndex=-1;
+   focus.focus({preventScroll:true});
+   const top=app.querySelector('.overview')?.getBoundingClientRect().bottom??0, rect=focus.getBoundingClientRect();
+   if(rect.top<top||rect.bottom>innerHeight)focus.scrollIntoView({block:'center'});
+ }
+ }finally{busy=false}
 });
 render();
 })();

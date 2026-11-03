@@ -8,16 +8,21 @@ const solve=require('./verify.cjs');
 (async()=>{
  const browser=await chromium.launch({channel:process.env.BATHHOUSE_BROWSER||'msedge'});
  try{
- const context=await browser.newContext({viewport:{width:320,height:740},offline:true});
+ const context=await browser.newContext({viewport:{width:320,height:740},offline:!process.env.BATHHOUSE_URL});
  context.setDefaultTimeout(6000);
  const page=await context.newPage();
  const errors=[];
  page.on('pageerror',e=>errors.push(String(e)));
- const url=pathToFileURL(path.join(__dirname,'dist/index.html')).href;
+ const url=process.env.BATHHOUSE_URL||pathToFileURL(path.join(__dirname,'dist/index.html')).href;
  await page.goto(url);
  const stale=await context.newPage();
  await stale.goto(url);
- const click=(selector)=>page.locator(selector).first().click();
+ const click=async selector=>{
+   const button=await page.locator(selector).first().elementHandle();
+   await button.click();
+   await page.waitForFunction(el=>!el.isConnected,button);
+   await button.dispose();
+ };
  const act=a=>click('[data-action="'+a.join(',')+'"]');
  await click('.hero .primary');
  assert.equal(await page.locator('.reception .is-calm').count(),1);
@@ -35,6 +40,15 @@ const solve=require('./verify.cjs');
  await page.reload();
  assert.equal(await page.locator('html').getAttribute('lang'),'en');
  assert.equal(await page.locator('.levels [data-level="1"]').isEnabled(),true);
+ await stale.locator('.hero .primary').click();
+ await stale.locator('[data-action="seat,0"]').click();
+ await stale.locator('#bath-0 .is-happy').waitFor();
+ await stale.reload();
+ await stale.locator('[data-nav="resume"]').click();
+ await stale.locator('#bath-0 .is-happy').waitFor();
+ for(const a of route.slice(1))await stale.locator('[data-action="'+a.join(',')+'"]').click();
+ await stale.locator('.result').waitFor();
+ await page.reload();
  console.log('Night 1 and reload checks passed');
  for(let i=1;i<nights.length;i++){
    await click('[data-level="'+i+'"]');
@@ -48,11 +62,18 @@ const solve=require('./verify.cjs');
      await click('[data-nav="hint"]');
    }
    const commands=solve(nights[i],nights[i][2].length).map(a=>a.join(','));
-   await page.evaluate(list=>{
+   await page.evaluate(async list=>{
      for(const command of list){
        const button=document.querySelector('[data-action="'+command+'"]');
        if(!button||button.disabled)throw new Error('Missing action '+command);
+       const painted=new Promise(resolve=>{
+         const observer=new MutationObserver(()=>{if(!button.isConnected){observer.disconnect();clearTimeout(timer);resolve()}});
+         const timer=setTimeout(()=>{observer.disconnect();resolve()},2500);
+         observer.observe(document.querySelector('#app'),{childList:true});
+       });
        button.click();
+       await painted;
+       if(button.isConnected)throw new Error('Action did not update: '+command);
      }
    },commands);
    assert.equal(await page.locator('.result').count(),1);
@@ -66,7 +87,21 @@ const solve=require('./verify.cjs');
  await page.reload();
  assert.equal(await page.locator('[data-nav=resume]').count(),0);
  assert.equal(await page.locator('[data-level="11"]').isEnabled(),true);
+ await click('.levels [data-level="0"]');
+ await act(['seat',0]);
+ await act(['seat',1]);
+ await act(['seat',1]);
+ assert.equal(await page.locator('#bath-1 .is-worried').count(),1);
+ assert.match(await page.locator('#bath-1 .people').innerText(),/0\/2 · Comfy next turn/);
+ assert.match(await page.locator('.overview-note').innerText(),/Happy guests served: 1/);
+ await click('[data-nav="menu"]');
+ page.once('dialog',d=>d.accept());
+ await click('.levels [data-level="1"]');
+ await act(['seat',0]);
+ assert.match(await page.locator('#bath-0 .people').innerText(),/Needs company/);
+ await act(['heat',1,1]);
+ assert.equal(await page.evaluate(()=>document.activeElement.closest('.bath')?.id),'bath-1');
  assert.deepEqual(errors,[]);
- console.log('Edge, offline file URL, 320px: all 12 nights, ending, save/reload, stale tab, language, focus, corrupt save OK');
+ console.log('320px: all 12 nights, ending, save/reload, stale tab, language, focus, corrupt save OK');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
