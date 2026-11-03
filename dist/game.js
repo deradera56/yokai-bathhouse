@@ -10,6 +10,7 @@ let lang=readLanguage()==='en'?1:0, best=nights.map((_,i)=>score(data,i));
 let index=0,s=null,view='menu',message=null,recorded=false,saveFailed=false,guideOpen=false;
 let hintOpen=false,hintResult=null;
 let arrival=null;
+let previousTurn=null;
 const tr=(ja,en)=>lang?en:ja;
 const name=id=>guests[id][lang];
 const temperature=t=>[tr('❄ ぬる湯','❄ Cool'),'≈ '+tr('適温','Warm'),tr('♨ 熱湯','♨ Hot')][t+1];
@@ -28,7 +29,7 @@ function validShift(value){
 }
 let suspended=validShift(data.shift)?data.shift:null, revision=data.revision??null, conflict=false;
 function save(allowEmpty=false){
- const shift=view==='play'?{index,s}:suspended;
+ const shift=view==='play'?{index,s,previousTurn}:suspended;
  const write=()=>{
  try{
    const latest=read();
@@ -119,7 +120,7 @@ function hintText(){
   :tr('次の客の好みと、今いる客が帰ったあとの湯温を見比べましょう。','Compare what the next guest wants with how the bath will change when current guests leave.');
  const {status,action:a}=hintResult;
  if(status==='met')return tr('目標達成済みです。残りの客を迎えるか、閉店まで進めましょう。','Goal met. Serve the remaining guests or play until closing.');
- if(status==='blocked')return tr('今の盤面からは目標に届きません。「今夜をやり直す」で再挑戦できます。','The goal is no longer reachable from this board. Try restarting the night.');
+ if(status==='blocked')return previousTurn?tr('今の盤面からは目標に届きません。まず「1手戻す」を試すか、今夜をやり直せます。','The goal is no longer reachable. Try undoing the last turn, or restart the night.'):tr('今の盤面からは目標に届きません。「今夜をやり直す」で再挑戦できます。','The goal is no longer reachable from this board. Try restarting the night.');
  if(status==='unknown')return tr('この盤面では攻略手順を見つけられませんでした。まだクリアできる可能性はあります。','No route was found within the search limit. The board may still be solvable.');
  const [type,i,k,j]=a;
  if(type==='seat')return tr(`${name(s.queue[0].id)}を湯船${i+1}に案内しましょう。`,`Seat ${name(s.queue[0].id)} in Bath ${i+1}.`);
@@ -134,11 +135,12 @@ function play(){
  <div class="overview-top"><strong>${head?tr('次：','Next: ')+guestLabel(head.id):tr('待ち客なし','Queue empty')}</strong><span>${tr('残り','Left')} ${n()[4]-s.turn} · ${tr('目標','Goal')} ${s.served}/${n()[5]}</span></div>
  ${head?`<div class="next-wants">${tr('好み：','Wants: ')}${temperature(guests[head.id][4])}${head.id==='K'&&n()[6]?.dry?` <b class="deadline">${tr('あと','Leaves in ')}${3-head.age}${tr('手で帰る',' turns')}</b>`:''}</div>`:''}
  <div class="overview-baths">${s.baths.map((b,i)=>`<a href="#bath-${i}"><strong>${tr('湯船','Bath')} ${i+1}</strong><span>${temperature(temp(b))} · ${b.people.length}/3</span></a>`).join('')}</div>
- ${message?`<div class="overview-note">${message[lang]}</div>`:''}</section>
+ <div class="overview-footer">${undoButton()}${message?`<div class="overview-note">${message[lang]}</div>`:''}</div></section>
  <details class="queue-panel"><summary>${tr('待ち列を見る','See the queue')} · ${s.queue.length}</summary><div class="queue">${s.queue.map((p,i)=>`<span class="chip">${i+1}. ${guestLabel(p.id)} · ${temperature(guests[p.id][4])}</span>`).join('')||tr('待ち客なし','No waiting guests')}</div></details>
  ${head?`<div class="reception">${doll(head.id,head.id==='K'&&n()[6]?.dry&&head.age>=1?'worried':'calm',head.id==='K'&&n()[6]?.dry)}<div><small>${tr('暖簾の前でお待ちです','AT THE CURTAIN')}</small><strong>${name(head.id)}</strong><span>${tr('好み：','Wants: ')}${temperature(guests[head.id][4])}</span></div></div>`:''}
  <div class="hint-tools"><button data-nav="hint" aria-expanded="${hintOpen}">${hintOpen?tr('ヒントを閉じる','Hide hint'):tr('ヒント','Hint')}</button>
  ${hintOpen?`<div class="hint-card"><p role="status">${hintText()}</p>${hintResult?'':`<button data-nav="hint-move">${tr('次の一手を見る','Show next move')}</button>`}</div>`:''}</div>
+ ${index===0&&(s.turn===0||(s.turn===1&&head?.id==='F'&&s.baths.some(b=>b.people.some(p=>p.id==='Y'))))?`<p class="panel muted">${s.turn===0?tr('雪女が入ると湯が冷えます。最初は湯を調整せず、どちらかに案内してみましょう。','The Snow Maiden cools the bath she enters. Try seating her without adjusting the water.'):tr('入浴中の全員を毎手チェックします。別の湯船に火車を案内しても、雪女の快適カウントは進みます。','Every action checks all bathers. Seating Fire Cat in the other bath also advances the Snow Maiden’s comfort count.')}</p>`:''}
  <div class="baths">${s.baths.map((b,i)=>{
  const canSeat=legal.find(a=>a[0]==='seat'&&a[1]===i);
  const preview=canSeat?temp({...b,people:[...b.people,head]}):null;
@@ -150,6 +152,7 @@ function play(){
  }).join('')}</div><div class="row">${action(['wait'],tr('１手待つ','Wait a turn'))}<button data-nav="retry">${tr('今夜をやり直す','Restart night')}</button></div>
  ${guide()}`;
 }
+function undoButton(){return `<button data-nav="undo" ${previousTurn?'':'disabled'}>${tr('↶ 1手戻す','↶ Undo last turn')}</button>`}
 function result(){
  const clear=s.served>=n()[5], final=clear&&index===11;
  return `<section class="panel result"><div class="stamp">${clear?'♨':'☾'}</div><h1>${final?tr('最後の灯がともる','The last lantern glows'):clear?tr('いい湯でした','A good soak'):tr('閉店です','Closing time')}</h1><p>${tr('満足して帰った妖怪','Happy guests')}: ${s.served} / ${n()[2].length} · ${tr('目標','Goal')} ${n()[5]}</p><p class="scene">${final?tr('湯上がりの瓶牛乳が、空の棚に並ぶ。小僧と河童が手を振った。また明日、同じ暖簾の下で。','Empty milk bottles line the shelf. The Kid and Kappa wave goodbye. See you tomorrow, under the same curtain.'):clear?tr('湯上がりの瓶牛乳が、今夜も売り切れた。','The last bottle of post-bath milk is gone.'):tr('客順を見て、湯船の空席を先に作ってみよう。','Look ahead in the queue and try leaving a seat free.')}</p><div class="row">${clear&&!final?`<button class="primary" data-level="${index+1}">${tr('次の晩','Next night')} →</button>`:''}<button data-level="${index}">${tr('もう一度','Play again')}</button><button data-nav="menu">${tr('営業日一覧','Night list')}</button></div></section>`;
@@ -170,8 +173,22 @@ function render(){
    }
  }
  const newGuide=app.querySelector('details:not(.queue-panel)');
+ if(view==='result'){
+   const row=app.querySelector('.result .row');
+   const status=document.createElement('p');
+   status.textContent=s.served>=n()[5]
+     ?tr('クリア！ 1手戻しても、最高記録と晩の解放は残ります。最後の手を戻せるのはこの画面を離れるまでです。','Cleared! Undo keeps your best score and unlocked nights. You can undo until you leave this screen.')
+     :tr('目標未達。この画面を離れる前なら最後の手を戻せます。今夜を最初からやり直すこともできます。','Goal missed. You can undo before leaving this screen, or replay the whole night.');
+   row.before(status);
+   row.insertAdjacentHTML('beforeend',undoButton());
+ }
  if(queueOpen&&app.querySelector('.queue-panel'))app.querySelector('.queue-panel').open=true;
- if(newGuide)newGuide.open=guideOpen;
+ if(newGuide){
+   newGuide.open=guideOpen;
+   const p=document.createElement('p');
+   p.textContent=tr('表示の湯温は3段階です。設定を1段変えても、妖怪の効果で「熱湯」や「ぬる湯」のままになることがあります。「1手戻す」は直前の操作だけを取り消します。','The displayed temperature has three levels. Changing the setting may leave the bath Hot or Cool because of the bathers’ effects. Undo reverses only the most recent turn.');
+   newGuide.querySelector('ul').before(p);
+ }
  if(view==='result'&&index===1&&s.served>=n()[5]){
   const p=document.createElement('p');p.className='scene';
   p.textContent=tr('瓶牛乳を手にした一つ目小僧が河童を誘った。「次も一緒に来てくれる？」','The One-eyed Kid turns to Kappa, milk bottle in hand. “Will you come with me next time?”');
@@ -179,7 +196,7 @@ function render(){
  }
 }
 function focusHeading(){const h=app.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true})}}
-async function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';await save(true);render();window.scrollTo(0,0);focusHeading()}
+async function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;previousTurn=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';await save(true);render();window.scrollTo(0,0);focusHeading()}
 let busy=false;
 app.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
@@ -192,6 +209,17 @@ app.addEventListener('click',async e=>{
    await begin(i);return;
  }
  const nav=b.dataset.nav;
+ if(nav==='undo'&&previousTurn){
+   const wasResult=view==='result';
+   s=previousTurn;previousTurn=null;recorded=false;view='play';hintResult=null;arrival=null;
+   message=['直前の1手を戻しました。次の手を打つと、またその手を戻せます。','Last turn undone. Make a move before you can undo again.'];
+   await save(true);render();
+   if(wasResult)window.scrollTo(0,0);
+   const target=app.querySelector('.overview');
+   target.tabIndex=-1;target.focus({preventScroll:true});
+   document.querySelector('#announce').textContent=message[lang];
+   return;
+ }
  if(nav==='hint'||nav==='hint-move'){
    if(nav==='hint'){hintOpen=!hintOpen;if(!hintOpen)hintResult=null}
    else hintResult=Bath.hint(s,n());
@@ -199,18 +227,19 @@ app.addEventListener('click',async e=>{
    document.querySelector('#announce').textContent=hintOpen?hintText():'';return;
  }
  if(nav==='language'){lang=1-lang;try{localStorage.setItem(key+'-lang',lang?'en':'ja')}catch{}render();app.querySelector('[data-nav="language"]').focus();return}
- if(nav==='menu'){if(view==='play'){suspended={index,s};view='menu';await save()}else view='menu';render();window.scrollTo(0,0);focusHeading();return}
- if(nav==='resume'&&suspended){({index,s}=suspended);suspended=null;recorded=false;message=null;view='play';await save();render();window.scrollTo(0,0);focusHeading();return}
+ if(nav==='menu'){if(view==='play'){suspended={index,s,previousTurn};view='menu';await save()}else view='menu';render();window.scrollTo(0,0);focusHeading();return}
+ if(nav==='resume'&&suspended){({index,s}=suspended);const p=suspended.previousTurn;previousTurn=validShift({index,s:p})&&p.turn===s.turn-1?p:null;suspended=null;recorded=false;message=null;view='play';await save();render();window.scrollTo(0,0);focusHeading();return}
  if(nav==='retry'){if(!s.turn||confirm(tr('今夜の進行をやり直しますか？','Restart this night?')))await begin(index);return}
  if(!b.dataset.action||view!=='play')return;
  const a=b.dataset.action.split(',').map((v,i)=>i?Number(v):v);
  const prev=s;s=step(s,n(),a);if(prev===s)return;
+ previousTurn=prev;
  if(a[0]==='seat')arrival=[a[1],s.baths[a[1]].people.length-1];
  hintResult=null;
  const notices=[];
  if(s.served>prev.served)notices.push(['満足して帰った妖怪：'+(s.served-prev.served),'Happy guests served: '+(s.served-prev.served)]);
  if(s.lost>prev.lost)notices.push(['河童の皿が乾き、帰ってしまった。','Kappa’s plate dried out. He went home.']);
- if(s.lost>n()[2].length-n()[5])notices.push(['残り全員を満足させても目標には届きません。今夜をやり直せます。','The goal is now out of reach. You can restart the night.']);
+ if(s.lost>n()[2].length-n()[5])notices.push(['残り全員を満足させても目標には届きません。「1手戻す」か「今夜をやり直す」を選べます。','The goal is now out of reach. Try undoing the last turn, or restart the night.']);
  message=notices.length?[0,1].map(i=>notices.map(x=>x[i]).join(' ')):null;
  if(done(s,n())&&!recorded){recorded=true;best[index]=Math.max(best[index],s.served);view='result';window.scrollTo(0,0)}
  await save();render();
