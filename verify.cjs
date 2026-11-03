@@ -1,0 +1,46 @@
+const assert = require('node:assert/strict');
+const B = require('./dist/rules.js');
+function solve(n, target=n[5]) {
+  let layer=[{s:B.start(n),path:[]}];
+  for(let t=0;t<n[4];t++){
+    const next=new Map();
+    for(const {s,path} of layer) for(const a of B.actions(s,n)){
+      const z=B.step(s,n,a), route=[...path,a];
+      if(z.served>=target)return route;
+      if(z.lost>n[2].length-target||B.done(z,n))continue;
+      const key=JSON.stringify(z);
+      if(!next.has(key)) next.set(key,{s:z,path:route});
+    }
+    const rank=({s})=>s.served*12-s.queue.length*4+s.baths.flatMap(b=>b.people.map(p=>2*p.streak+Number(B.happy(p,b)))).reduce((a,b)=>a+b,0);
+    layer=[...next.values()].sort((a,b)=>rank(b)-rank(a)).slice(0,2200);
+  }
+}
+if(require.main===module){
+for(const n of B.nights){
+  const route=solve(n,n[2].length)||solve(n);
+  assert.ok(route,'No verified path: '+n[0]);
+  let s=B.start(n);
+  for(const a of route){
+    const old=JSON.stringify(s), next=B.step(s,n,a);
+    assert.equal(JSON.stringify(s),old);
+    assert.equal(next.turn,s.turn+1);
+    assert.equal(next.served+next.lost+next.queue.length+next.baths.flatMap(b=>b.people).length,n[2].length);
+    s=next;
+  }
+  console.log(n[1]+': '+s.served+'/'+n[2].length+' in '+s.turn+' turns');
+}
+const n=B.nights[0], s=B.start(n);
+assert.equal(B.step(s,n,['move',99,0,0]),s);
+const seated=B.step(s,n,['seat',0]);
+assert.equal(B.temp(seated.baths[0]),-1);
+assert.equal(seated.baths[0].people[0].streak,1);
+assert.equal(B.step(seated,n,['wait']).served,1);
+assert.equal(B.step(s,n,[['seat'],0]),s);
+const dry=B.nights[2];
+let q=B.step(B.step(B.start(dry),dry,['seat',0]),dry,['seat',1]);
+assert.equal(q.queue[0].age,0);
+for(let i=0;i<2;i++)q=B.step(q,dry,['wait']);
+assert.equal(q.queue[0].age,2);
+assert.equal(B.step(q,dry,['wait']).lost,1);
+}
+module.exports=solve;
