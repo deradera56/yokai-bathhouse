@@ -19,11 +19,19 @@ const Bath = (() => {
     ['火の祭り','Fire Festival','FNFTKUZH',[1,0],12,7,{lock:0}],
     ['波の音','Sound of Waves','UUHZKTNF',[0,-1],12,7,{dry:true}],
     ['常連たち','The Regulars','HKZNYFTU',[0,0],11,8],
-    ['最後の灯','Last Lantern','YFHTUKNZK',[-1,0,1],12,9,{dry:true,lock:0}]
+    ['最後の灯','Last Lantern','YFHTUKNZK',[-1,0,1],12,9,{dry:true,lock:0}],
+    ['湯分けの晩','Shared Water','KHKNK',[-1,1],8,5,{gate:true}],
+    ['水路のいたずら','Crossed Currents','NTZUHKFY',[-1,1],12,7,{gate:true}],
+    ['連れ風呂の晩','Bath for Two','HYKFN',[0,0],8,5,{pair:true}],
+    ['空けておいた席','A Seat Saved','THUNFKYZ',[0,0],12,7,{pair:true}],
+    ['残り湯の晩','Lingering Warmth','FNZYKU',[0,0],9,6,{echo:true}],
+    ['瓶牛乳で乾杯','A Milk-Bottle Toast','YFNHKZTUK',[0,0,0],13,9,{echo:true}]
   ];
   const clamp = n => Math.max(-1,Math.min(1,n));
-  const temp = b => clamp(b.base+b.people.reduce((n,p)=>n+guests[p.id][3],0));
-  const happy = (p,b) => temp(b)===guests[p.id][4] && (p.id!=='H'||b.people.length>=2);
+  const temp = b => clamp(b.base+(b.echo??0)+b.people.reduce((n,p)=>n+guests[p.id][3],0));
+  const partner = id=>id==='H'?'K':id==='K'?'H':null;
+  const happy = (p,b,n) => temp(b)===guests[p.id][4] &&
+    (n?.[6]?.pair&&partner(p.id)?b.people.some(q=>q.id===partner(p.id)):(p.id!=='H'||b.people.length>=2));
   // Each night awards a full-house stamp and one optional challenge stamp.
   // [maximum turns, forbidden action, Japanese title, English title]
   const specials=[
@@ -38,10 +46,16 @@ const Bath = (() => {
     [10,null,'祭りの早仕舞い','Festival Sprint'],
     [null,'wait','波に乗って','Ride the Wave'],
     [9,null,'常連の呼吸','In Sync'],
-    [null,'heat','最後の灯をそのままに','Leave the Lantern Lit']
+    [null,'heat','最後の灯をそのままに','Leave the Lantern Lit'],
+    [7,null,'湯分け上手','Water Keeper'],
+    [null,'move','流れにまかせて','Go with the Flow'],
+    [null,'move','ふたりで並んで','Side by Side'],
+    [null,'wait','席を空ける手際','Make Room'],
+    [null,'move','残り湯じょうず','Lingering Touch'],
+    [null,'wait','乾杯の段取り','Ready for the Toast']
   ];
   const start = n => ({turn:0,served:0,lost:0,used:0,queue:n[2].split('').map(id=>({id,age:0})),baths:n[3].map(base=>({base,people:[]}))});
-  const mask={seat:1,move:2,heat:4,wait:8};
+  const mask={seat:1,move:2,heat:4,wait:8,gate:16};
   function awards(s,n,i){
     const [limit,ban]=specials[i];
     return (s.served===n[2].length?1:0)|
@@ -53,7 +67,8 @@ const Bath = (() => {
     const a=[['wait']];
     s.baths.forEach((b,i)=>{
       if(s.queue.length&&b.people.length<3) a.push(['seat',i]);
-      if(n[6]?.lock!==i) for(const d of [-1,1]) if(clamp(b.base+d)!==b.base) a.push(['heat',i,d]);
+      if(!n[6]?.gate&&n[6]?.lock!==i) for(const d of [-1,1]) if(clamp(b.base+d)!==b.base) a.push(['heat',i,d]);
+      if(n[6]?.gate&&b.base<1&&s.baths[1-i].base>-1)a.push(['gate',i]);
       b.people.forEach((p,k)=>s.baths.forEach((other,j)=>{
         if(i!==j&&other.people.length<3) a.push(['move',i,k,j]);
       }));
@@ -67,10 +82,12 @@ const Bath = (() => {
     if(Number.isInteger(s.used))z.used|=mask[type];
     if(type==='seat') z.baths[i].people.push({id:z.queue.shift().id,streak:0});
     if(type==='heat') z.baths[i].base+=k;
+    if(type==='gate'){z.baths[i].base++;z.baths[1-i].base--;}
     if(type==='move') z.baths[j].people.push(z.baths[i].people.splice(k,1)[0]);
     z.turn++;
     for(const b of z.baths){
-      for(const p of b.people) p.streak=happy(p,b)?p.streak+1:0;
+      for(const p of b.people) p.streak=happy(p,b,n)?p.streak+1:0;
+      if(n[6]?.echo)b.echo=b.people.reduce((sum,p)=>sum+(p.streak>=2?guests[p.id][3]:0),0);
       b.people=b.people.filter(p=>{if(p.streak<2)return true;z.served++;return false;});
     }
     // Only the guest at the counter has entered the dry waiting room.
@@ -116,6 +133,6 @@ const Bath = (() => {
     }
     return {status:'unknown'};
   }
-  return {guests,nights,specials,awards,temp,happy,start,step,actions,done,hint};
+  return {guests,nights,specials,awards,temp,happy,partner,start,step,actions,done,hint};
 })();
 if(typeof module!=='undefined') module.exports=Bath;

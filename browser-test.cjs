@@ -13,7 +13,7 @@ const solve=require('./verify.cjs');
  const page=await context.newPage();
  const errors=[];
  page.on('pageerror',e=>errors.push(String(e)));
- const url=process.env.BATHHOUSE_URL||pathToFileURL(path.join(__dirname,'dist/index.html')).href;
+ const url=process.env.BATHHOUSE_URL||pathToFileURL(path.join(process.env.BATHHOUSE_DIST||path.join(__dirname,'dist'),'index.html')).href;
  await page.goto(url);
  const stale=await context.newPage();
  await stale.goto(url);
@@ -46,7 +46,8 @@ const solve=require('./verify.cjs');
  await stale.locator('[data-nav=language]').click();
  await page.reload();
  assert.equal(await page.locator('html').getAttribute('lang'),'en');
- assert.match(await page.locator('.stamp-album summary').innerText(),/2\/24/);
+ assert.match(await page.locator('.stamp-album summary').innerText(),/2\/36/);
+ assert.equal(await page.locator('.levels [data-level="12"]').isDisabled(),true);
  assert.equal(await page.locator('.levels [data-level="1"]').isEnabled(),true);
  await stale.locator('.hero .primary').click();
  await stale.locator('[data-action="seat,0"]').click();
@@ -61,6 +62,7 @@ const solve=require('./verify.cjs');
  for(let i=1;i<nights.length;i++){
    await click('[data-level="'+i+'"]');
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'overflow at night '+i);
+   if(i===12)assert.equal(await page.getByRole('button',{name:'Valve: heat Bath 1, cool Bath 2'}).count(),1);
    if(i===2){
      await click('[data-nav="hint"]');
      assert.match(await page.locator('.hint-card').innerText(),/Kappa leaves/);
@@ -75,6 +77,21 @@ const solve=require('./verify.cjs');
      await click('[data-nav="undo"]');
      assert.match(await page.locator('.deadline').innerText(),/Leaves in 1 turns/);
      assert.match(await page.locator('.stats').innerText(),/Walked out 0/);
+     page.once('dialog',d=>d.accept());
+     await click('[data-nav="retry"]');
+   }
+   if(i===16){
+     await act(['seat',0]);
+     await act(['wait']);
+     assert.match(await page.locator('#bath-0 small').innerText(),/Lingering heat \+1/);
+     await click('[data-nav="menu"]');
+     await page.reload();
+     await click('[data-nav="resume"]');
+     assert.match(await page.locator('#bath-0 small').innerText(),/Lingering heat \+1/);
+     await click('[data-nav="undo"]');
+     assert.equal(await page.locator('#bath-0 .people li').count(),1);
+     assert.match(await page.locator('#bath-0 .people').innerText(),/Fire Cat/);
+     assert.doesNotMatch(await page.locator('#bath-0 small').innerText(),/Lingering heat/);
      page.once('dialog',d=>d.accept());
      await click('[data-nav="retry"]');
    }
@@ -98,9 +115,11 @@ const solve=require('./verify.cjs');
      assert.equal(await page.locator('.stamp-result .collected').count(),1);
    }
    assert.equal(await page.locator('.result').count(),1);
+   if(i===11)assert.match(await page.locator('.result [data-level="12"]').innerText(),/Open After Hours/);
    console.log('Night '+(i+1)+' passed');
  }
- assert.match(await page.locator('.result h1').innerText(),/last lantern/i);
+ assert.match(await page.locator('.result h1').innerText(),/milk-bottle toast/i);
+ assert.equal(await page.locator('.toast-art svg').count(),3);
  await page.evaluate(()=>{
    const k='yokai-bathhouse-v1', d=JSON.parse(localStorage.getItem(k));
    d.shift={index:0,s:{baths:[]}};localStorage.setItem(k,JSON.stringify(d));
@@ -123,6 +142,6 @@ const solve=require('./verify.cjs');
  await act(['heat',1,1]);
  assert.equal(await page.evaluate(()=>document.activeElement.closest('.bath')?.id),'bath-1');
  assert.deepEqual(errors,[]);
- console.log('320px: all 12 nights, ending, save/reload, stale tab, language, focus, corrupt save OK');
+ console.log('320px: all 18 nights, After Hours unlock, ending, save/reload, stale tab, language, focus, corrupt save OK');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

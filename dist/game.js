@@ -1,5 +1,5 @@
 (() => {
-const {guests,nights,specials,awards,temp,start,step,actions,done}=Bath;
+const {guests,nights,specials,awards,temp,partner,start,step,actions,done}=Bath;
 const app=document.querySelector('#app');
 const key='yokai-bathhouse-v1';
 function read(){try{return JSON.parse(localStorage.getItem(key))||{}}catch{return {}}}
@@ -26,6 +26,7 @@ function validShift(value){
  return q&&int(q.turn,0,level[4]-1)&&int(q.served,0,total)&&int(q.lost,0,total)&&
    Array.isArray(q.queue)&&q.queue.every(p=>validId(p)&&int(p.age,0,2))&&
    Array.isArray(q.baths)&&q.baths.length===level[3].length&&q.baths.every(b=>b&&int(b.base,-1,1)&&
+     (b.echo===undefined||Boolean(level[6]?.echo)&&int(b.echo,-3,3))&&
      Array.isArray(b.people)&&b.people.length<=3&&b.people.every(p=>validId(p)&&int(p.streak,0,1)))&&
    q.served+q.lost+q.queue.length+q.baths.reduce((a,b)=>a+b.people.length,0)===total&&!done(q,level);
 }
@@ -66,7 +67,8 @@ const stories=[
  ['いつもの顔がそろった。最後の灯を、あたたかく残そう。','All the familiar faces are here. Let the last lantern burn warm.']
 ];
 function guide(){return `<details><summary>${tr('遊び方・妖怪帳','How to play & guest book')}</summary><p>${tr('列の先頭を案内・客を移動・湯を調整・待つ。どれも１手。各湯船は３人まで。好みの湯で２手連続過ごすと満足して帰ります。','Seat the first guest, move a bather, adjust a bath, or wait. Each costs one turn. Baths hold three. Guests leave happy after two consecutive comfortable turns.')}</p><p>${tr('湯温は設定温度＋入浴中の妖怪の効果。釜が壊れた湯船も、妖怪の効果では温度が変わります。','Bath temperature combines the setting with the effects of current bathers. Guests still affect baths with broken boilers.')}</p><ul>${Object.entries(guests).map(([id,g])=>`<li>${g[2]} ${name(id)} · ${temperature(g[4])} ${g[3]? ' / '+(g[3]>0?tr('湯を温める','heats bath'):tr('湯を冷やす','cools bath')):''} ${id==='H'?tr('／相席が必要',' / needs company'):''}${id==='K'?tr('／乾いた夜は先頭で３手経つと帰る',' / leaves after 3 turns at the head of the line on dry nights'):''}</li>`).join('')}</ul></details>`}
-function menu(){return `<section class="hero">${art}<div class="eyebrow">${tr('終電のあと、暖簾が開く','AFTER THE LAST TRAIN')}</div><h1>${title()}</h1><p>${tr('雪女で冷まし、火車で温める。今夜も、妖怪たちにいい湯を。','Cool the water with a snow spirit. Warm it with a fire cat. Give every yokai a good soak.')}</p><div class="row">${suspended?`<button class="primary" data-nav="resume">${tr('営業を再開','Resume shift')}</button>`:`<button class="primary" data-level="${Math.max(0,nights.findIndex((x,i)=>best[i]<x[5]))}">${tr('暖簾を開ける','Open the bathhouse')}</button>`}</div></section><section class="panel"><h2>${tr('十二晩の営業','Twelve nights')}</h2><div class="levels">${nights.map((x,i)=>`<button data-level="${i}" ${unlocked(i)?'':'disabled'}>${String(i+1).padStart(2,'0')} · ${x[lang]}<br><small>${unlocked(i)?`${tr('最高','Best')} ${best[i]}/${x[2].length}`:'🔒'}</small></button>`).join('')}</div></section>${guide()}`}
+function nightButtons(from,to){return nights.slice(from,to).map((x,k)=>{const i=from+k;return `<button data-level="${i}" ${unlocked(i)?'':'disabled'}>${String(i+1).padStart(2,'0')} · ${x[lang]}<br><small>${unlocked(i)?`${tr('最高','Best')} ${best[i]}/${x[2].length}`:'🔒'}</small></button>`}).join('')}
+function menu(){return `<section class="hero">${art}<div class="eyebrow">${tr('終電のあと、暖簾が開く','AFTER THE LAST TRAIN')}</div><h1>${title()}</h1><p>${tr('雪女で冷まし、火車で温める。今夜も、妖怪たちにいい湯を。','Cool the water with a snow spirit. Warm it with a fire cat. Give every yokai a good soak.')}</p><div class="row">${suspended?`<button class="primary" data-nav="resume">${tr('営業を再開','Resume shift')}</button>`:`<button class="primary" data-level="${Math.max(0,nights.findIndex((x,i)=>best[i]<x[5]))}">${tr('暖簾を開ける','Open the bathhouse')}</button>`}</div></section><section class="panel"><h2>${tr('本編・裏営業','Main Nights & After Hours')}</h2><p class="muted">${tr('本編12晩をクリアすると裏営業の第1晩が開きます。以降も1晩ずつ解放されます。','Clear the 12 main nights to open the first After Hours shift. Clear each shift to unlock the next.')}</p><div class="levels">${nightButtons(0,12)}</div><h2 class="after-hours-heading">${tr('裏営業 · 6晩','After Hours · 6 nights')}</h2><div class="levels">${nightButtons(12,nights.length)}</div></section>${guide()}`}
 const faces={
  Y:['#a9d5f0','M5 17Q2 2 16 2T27 17L24 25H8Z','M7 12 13 6l2 7 9-3'],
  F:['#ffa077','M4 17 5 4l8 6h6l8-6 1 13Q28 28 16 28T4 17Z','M13 7 17 1l3 7'],
@@ -113,11 +115,19 @@ function bathScene(b,i){
 }
 function comfort(p,b){
  if(temp(b)!==guests[p.id][4])return tr('湯温が合わない','Wrong temperature');
+ if(n()[6]?.pair&&partner(p.id)&&!b.people.some(q=>q.id===partner(p.id)))return tr(`${name(partner(p.id))}を待っています`,`Waiting for ${name(partner(p.id))}`);
  if(p.id==='H'&&b.people.length<2)return tr('相席待ち','Needs company');
  return p.streak?tr('✓ 快適','✓ Comfy'):tr('次の手から快適','Comfy next turn');
 }
 function action(a,label,cls='',id='',accessible=''){return `<button class="${cls}" data-action="${a.join(',')}" ${id?`aria-describedby="${id}"`:''} ${accessible?`aria-label="${accessible}"`:''}>${label}</button>`}
 function hintText(){
+ if(!hintResult&&n()[6]?.gate)return tr('河童や一つ目小僧には適温が必要です。片方がぬる湯でも、もう片方が熱湯なら、ぬるい方へ熱を移すと両方を適温にできます。','Kappa and the Kid need warm water. If one setting is Cool and the other Hot, transfer heat toward the cooler bath to bring both settings to Warm.');
+ if(!hintResult&&n()[6]?.pair)return tr('河童と小僧のために、同じ湯船に2席を確保しましょう。その間、ほかの客にはもう一方の湯船を使えます。','Save two seats in one bath for Kappa and the Kid. Use the other bath to serve guests while they wait to reunite.');
+ if(!hintResult&&n()[6]?.echo){
+   const i=s.baths.findIndex(b=>b.echo);
+   if(i>=0)return tr(`湯船${i+1}に${s.baths[i].echo>0?'あたたかさ':'冷たさ'}が残っています。次の手の判定には効きますが、そのあとの湯温は変わるので予告を見比べましょう。`,`Bath ${i+1} still holds a ${s.baths[i].echo>0?'heating':'cooling'} effect. Compare the temperature for this turn with the temperature afterward before seating anyone.`);
+   return tr('火車や雪女が帰る手を見越して、次の客が残り湯を使えるように席を空けておきましょう。','When Fire Cat or the Snow Maiden is about to leave, keep a seat free so the next guest can use their lingering effect.');
+ }
  if(!hintResult)return index===2
   ?tr('河童は列の先頭で案内されずに３手経つと帰ります。天狗と火車を同席させるなら、河童用に別の適温の湯船を残しましょう。火車の退浴後、適温設定の湯船で海坊主が天狗の加温を打ち消せます。','Kappa leaves after three turns waiting at the front. If Tengu and Fire Cat share a bath, keep another bath warm for Kappa. Once Fire Cat leaves, Sea Monk can cancel out Tengu’s heat in a bath set to Warm.')
   :tr('次の客の好みと、今いる客が帰ったあとの湯温を見比べましょう。','Compare what the next guest wants with how the bath will change when current guests leave.');
@@ -128,12 +138,34 @@ function hintText(){
  const [type,i,k,j]=a;
  if(type==='seat')return tr(`${name(s.queue[0].id)}を湯船${i+1}に案内しましょう。`,`Seat ${name(s.queue[0].id)} in Bath ${i+1}.`);
  if(type==='heat')return tr(`湯船${i+1}を${k>0?'温めましょう':'冷ましましょう'}。`,`${k>0?'Heat':'Cool'} Bath ${i+1}.`);
+ if(type==='gate')return tr(`湯船${i+1}へ熱を移す栓を開けましょう。`,`Open the valve to heat Bath ${i+1}.`);
  if(type==='move')return tr(`湯船${i+1}の${name(s.baths[i].people[k].id)}を湯船${j+1}へ移しましょう。`,`Move ${name(s.baths[i].people[k].id)} from Bath ${i+1} to Bath ${j+1}.`);
  return tr('誰も移動させず、１手待ちましょう。','Wait one turn without moving anyone.');
 }
+function nightRule(){
+ const flags=n()[6];
+ if(flags?.gate)return tr('水路の栓を開けると、指定の湯船の設定が1段上がり、もう片方が1段下がります。釜は使えません。','A valve raises one bath’s setting by one step and lowers the other. The boilers are unavailable.');
+ if(flags?.pair)return tr('河童と一つ目小僧は、同じ適温の湯船にいるときだけ快適になります。','Kappa and the One-eyed Kid only get comfortable when they share a warm bath.');
+ if(flags?.echo)return tr('満足して退浴した妖怪の加温・冷却効果が、次の1手だけ湯船に残ります。','A happy guest’s heating or cooling effect lingers for one turn after they leave.');
+ return '';
+}
+function nightStory(){
+ return [
+   tr('暖簾を片づけていると、一つ目小僧が戸を叩いた。「もう一回だけ、いい？」','As you take down the curtain, the Kid knocks. “Could we have one more bath?”'),
+   tr('天狗が栓をひねると、隣の湯船から湯気が立った。','Tengu turns a valve, and steam rises from the other bath.'),
+   tr('小僧と河童は、二人で入れる湯船を探している。','The Kid and Kappa are looking for a bath they can share.'),
+   tr('今夜は待ち列が長い。小僧は河童のぶんまで手ぬぐいを持ってきた。','The line is long tonight. The Kid brought an extra towel for Kappa.'),
+   tr('火車が上がったあとも、湯にあたたかさが残っている。','Fire Cat climbs out, but a little warmth lingers in the bath.'),
+   tr('瓶牛乳を冷やしておこう。今夜は乾杯する約束だ。','Put the milk bottles on ice. Tonight everyone has promised to stay for a toast.')
+ ][index-12];
+}
+function toastArt(){
+ const bottle='<path d="M14 5h12v8l4 7v24H10V20l4-7z" fill="#fff1c9" stroke="#72574c" stroke-width="2"/><path d="M12 4h16v5H12z" fill="#e98372"/><path d="M11 23h18v9H11z" fill="#9accc2"/>';
+ return `<div class="toast-art" aria-hidden="true">${doll('H','happy')}<svg viewBox="0 0 80 55"><g transform="rotate(-20 20 25)">${bottle}</g><g transform="translate(40) rotate(20 20 25)">${bottle}</g><path d="M40 2v9m-9-5 4 6m14-6-4 6" stroke="#ffdf92" stroke-width="2"/></svg>${doll('K','happy')}</div>`;
+}
 function play(){
  const legal=actions(s,n()), head=s.queue[0];
- return `<section class="panel"><div class="eyebrow">${tr('第','NIGHT ')}${index+1}${tr('晩','')} / 12</div><h2>${n()[lang]}</h2><p class="scene">${stories[index][lang]}</p><div class="stats"><span>${tr('残り','Turns left')} ${n()[4]-s.turn}</span><span>${tr('満足','Happy')} ${s.served}/${n()[5]}</span><span>${tr('帰った','Walked out')} ${s.lost}</span></div></section>
+ return `<section class="panel"><div class="eyebrow">${tr('第','NIGHT ')}${index+1}${tr('晩','')} / ${nights.length}${index>=12?' · '+tr('裏営業','AFTER HOURS'):''}</div><h2>${n()[lang]}</h2><p class="scene">${stories[index]?.[lang]??nightStory()}</p>${nightRule()?`<p class="night-rule">${nightRule()}</p>`:''}<div class="stats"><span>${tr('残り','Turns left')} ${n()[4]-s.turn}</span><span>${tr('満足','Happy')} ${s.served}/${n()[5]}</span><span>${tr('帰った','Walked out')} ${s.lost}</span></div></section>
  <section class="overview" aria-label="${tr('営業状況','Shift overview')}">
  <div class="overview-top"><strong>${head?tr('次：','Next: ')+guestLabel(head.id):tr('待ち客なし','Queue empty')}</strong><span>${tr('残り','Left')} ${n()[4]-s.turn} · ${tr('目標','Goal')} ${s.served}/${n()[5]}</span></div>
  ${head?`<div class="next-wants">${tr('好み：','Wants: ')}${temperature(guests[head.id][4])}${head.id==='K'&&n()[6]?.dry?` <b class="deadline">${tr('あと','Leaves in ')}${3-head.age}${tr('手で帰る',' turns')}</b>`:''}</div>`:''}
@@ -148,15 +180,16 @@ function play(){
  const canSeat=legal.find(a=>a[0]==='seat'&&a[1]===i);
  const preview=canSeat?temp({...b,people:[...b.people,head]}):null;
  const after=canSeat?temp(step(s,n(),canSeat).baths[i]):null;
- return `<section id="bath-${i}" class="bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}"><h3>${tr('湯船','Bath')} ${i+1} · ${temperature(temp(b))}</h3><small>${tr('設定','Setting')}: ${temperature(b.base)} · ${b.people.length}/3 ${n()[6]?.lock===i?tr(' · 釜故障',' · boiler out'):''}</small>
+ const gate=legal.find(a=>a[0]==='gate'&&a[1]===i);
+ return `<section id="bath-${i}" class="bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}"><h3>${tr('湯船','Bath')} ${i+1} · ${temperature(temp(b))}</h3><small>${tr('設定','Setting')}: ${temperature(b.base)} · ${b.people.length}/3 ${n()[6]?.lock===i?tr(' · 釜故障',' · boiler out'):''}${b.echo?` · ${tr('残り湯','Lingering heat')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
  ${bathScene(b,i)}
  <ul class="people">${b.people.map((p,k)=>`<li>${guestLabel(p.id)} · ${temperature(guests[p.id][4])} · ${p.streak}/2 · ${comfort(p,b)}${legal.filter(a=>a[0]==='move'&&a[1]===i&&a[2]===k).map(a=>` <span class="move">${action(a,tr('→ 湯船','→ Bath')+' '+(a[3]+1),'','',tr(`${name(p.id)}を湯船${a[3]+1}へ移す`,`Move ${name(p.id)} to Bath ${a[3]+1}`))}</span>`).join('')}</li>`).join('')||`<li class="muted">${tr('空席','Empty')}</li>`}</ul>
- <div class="preview" id="preview-${i}">${preview===null?'':name(head.id)+' · '+tr('好み：','Wants ')+temperature(guests[head.id][4])+'<br>'+tr('この手の判定：','This turn: ')+temperature(preview)+(after!==preview?tr(' ／ 退浴後：',' / After guests leave: ')+temperature(after):'')}</div><div class="actions">${canSeat?action(canSeat,tr('案内する','Seat guest'),'primary','preview-'+i,tr(`${name(head.id)}を湯船${i+1}に案内`,`Seat ${name(head.id)} in Bath ${i+1}`)):''}${legal.filter(a=>a[0]==='heat'&&a[1]===i).map(a=>action(a,a[2]>0?tr('＋ 温める','+ Heat'):tr('− 冷ます','− Cool'),'','',tr(`湯船${i+1}を${a[2]>0?'温める':'冷ます'}`,`${a[2]>0?'Heat':'Cool'} Bath ${i+1}`))).join('')}</div></section>`;
+ <div class="preview" id="preview-${i}">${preview===null?'':name(head.id)+' · '+tr('好み：','Wants ')+temperature(guests[head.id][4])+'<br>'+tr('この手の判定：','This turn: ')+temperature(preview)+(after!==preview?tr(' ／ 手終了後：',' / After the turn: ')+temperature(after):'')}</div><div class="actions">${canSeat?action(canSeat,tr('案内する','Seat guest'),'primary','preview-'+i,tr(`${name(head.id)}を湯船${i+1}に案内`,`Seat ${name(head.id)} in Bath ${i+1}`)):''}${gate?action(gate,tr(`栓：湯船${i+1}を温め、湯船${2-i}を冷ます`,`Valve: heat Bath ${i+1}, cool Bath ${2-i}`)):''}${legal.filter(a=>a[0]==='heat'&&a[1]===i).map(a=>action(a,a[2]>0?tr('＋ 温める','+ Heat'):tr('− 冷ます','− Cool'),'','',tr(`湯船${i+1}を${a[2]>0?'温める':'冷ます'}`,`${a[2]>0?'Heat':'Cool'} Bath ${i+1}`))).join('')}</div></section>`;
  }).join('')}</div><div class="row">${action(['wait'],tr('１手待つ','Wait a turn'))}<button data-nav="retry">${tr('今夜をやり直す','Restart night')}</button></div>
  ${guide()}`;
 }
 function undoButton(){return `<button data-nav="undo" ${previousTurn?'':'disabled'}>${tr('↶ 1手戻す','↶ Undo last turn')}</button>`}
-const stampGuests='YHKUF TZNFUHK'.replace(' ','');
+const stampGuests='YHKUFTZNFUHKFTKHUK';
 function stampRule(i){
  const [limit,ban]=specials[i];
  return limit?tr(`${limit}手以内に目標人数を満足させて閉店`,`Meet the goal and close within ${limit} turns`):
@@ -170,7 +203,7 @@ function stampCard(i,bit){
 let albumOpen=false;
 function stampPanel(){
  const count=stamps.reduce((sum,v)=>sum+Number(Boolean(v&1))+Number(Boolean(v&2)),0);
- if(view==='menu')return `<details class="stamp-album" ${albumOpen?'open':''}><summary>${tr('おもてなし帳','Hospitality Album')} · ${count}/24</summary><p>${tr('各晩に2枚。札は任意で、次の晩の解放には通常クリアだけで十分です。','Two optional stamps per night. A regular clear is all you need to unlock the next night.')}</p><div class="stamp-grid">${nights.map((_,i)=>stampCard(i,1)+stampCard(i,2)).join('')}</div></details>`;
+ if(view==='menu')return `<details class="stamp-album" ${albumOpen?'open':''}><summary>${tr('おもてなし帳','Hospitality Album')} · ${count}/${nights.length*2}</summary><p>${tr('各晩に2枚。札は任意で、次の晩の解放には通常クリアだけで十分です。','Two optional stamps per night. A regular clear is all you need to unlock the next night.')}</p><div class="stamp-grid">${nights.map((_,i)=>stampCard(i,1)+stampCard(i,2)).join('')}</div></details>`;
  if(view==='result')return `<section class="stamp-result"><h2>${earned?tr('おもてなし札を獲得！','New hospitality stamp!'):tr('今夜のおもてなし札','Tonight’s stamps')}</h2><div class="stamp-grid">${stampCard(index,1)+stampCard(index,2)}</div></section>`;
  const [limit,ban]=specials[index];
  const flag={move:2,heat:4,wait:8}[ban];
@@ -184,8 +217,8 @@ function closeNight(){
  recorded=true;best[index]=Math.max(best[index],s.served);view='result';
 }
 function result(){
- const clear=s.served>=n()[5], final=clear&&index===11;
- return `<section class="panel result"><div class="stamp">${clear?'♨':'☾'}</div><h1>${final?tr('最後の灯がともる','The last lantern glows'):clear?tr('いい湯でした','A good soak'):tr('閉店です','Closing time')}</h1><p>${tr('満足して帰った妖怪','Happy guests')}: ${s.served} / ${n()[2].length} · ${tr('目標','Goal')} ${n()[5]}</p><p class="scene">${final?tr('湯上がりの瓶牛乳が、空の棚に並ぶ。小僧と河童が手を振った。また明日、同じ暖簾の下で。','Empty milk bottles line the shelf. The Kid and Kappa wave goodbye. See you tomorrow, under the same curtain.'):clear?tr('湯上がりの瓶牛乳が、今夜も売り切れた。','The last bottle of post-bath milk is gone.'):tr('客順を見て、湯船の空席を先に作ってみよう。','Look ahead in the queue and try leaving a seat free.')}</p><div class="row">${clear&&!final?`<button class="primary" data-level="${index+1}">${tr('次の晩','Next night')} →</button>`:''}<button data-level="${index}">${tr('もう一度','Play again')}</button><button data-nav="menu">${tr('営業日一覧','Night list')}</button></div></section>`;
+ const clear=s.served>=n()[5], mainEnd=clear&&index===11, final=clear&&index===nights.length-1;
+ return `<section class="panel result"><div class="stamp">${clear?'♨':'☾'}</div><h1>${final?tr('瓶牛乳で乾杯','A Milk-Bottle Toast'):mainEnd?tr('最後の灯がともる','The last lantern glows'):clear?tr('いい湯でした','A good soak'):tr('閉店です','Closing time')}</h1><p>${tr('満足して帰った妖怪','Happy guests')}: ${s.served} / ${n()[2].length} · ${tr('目標','Goal')} ${n()[5]}</p><p class="scene">${final?tr('河童と一つ目小僧は瓶を合わせた。「また一緒に来ようね」','Kappa and the Kid clink their bottles. “Let’s come back together.”'):mainEnd?tr('湯上がりの瓶牛乳が、空の棚に並ぶ。小僧と河童が手を振った。また明日、同じ暖簾の下で。','Empty milk bottles line the shelf. The Kid and Kappa wave goodbye. See you tomorrow, under the same curtain.'):clear?tr('湯上がりの瓶牛乳が、今夜も売り切れた。','The last bottle of post-bath milk is gone.'):tr('客順を見て、湯船の空席を先に作ってみよう。','Look ahead in the queue and try leaving a seat free.')}</p>${final?toastArt():''}<div class="row">${clear&&!final?`<button class="primary" data-level="${index+1}">${mainEnd?tr('裏営業へ','Open After Hours'):tr('次の晩','Next night')} →</button>`:''}<button data-level="${index}">${tr('もう一度','Play again')}</button><button data-nav="menu">${tr('営業日一覧','Night list')}</button></div></section>`;
 }
 function render(){
  const oldGuide=app.querySelector('.guide');

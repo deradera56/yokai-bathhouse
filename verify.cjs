@@ -12,7 +12,7 @@ function solve(n, target=n[5], {limit=n[4],ban}={}) {
       const key=JSON.stringify(z);
       if(!next.has(key)) next.set(key,{s:z,path:route});
     }
-    const rank=({s})=>s.served*12-s.queue.length*4+s.baths.flatMap(b=>b.people.map(p=>2*p.streak+Number(B.happy(p,b)))).reduce((a,b)=>a+b,0);
+    const rank=({s})=>s.served*12-s.queue.length*4+s.baths.flatMap(b=>b.people.map(p=>2*p.streak+Number(B.happy(p,b,n)))).reduce((a,b)=>a+b,0);
     layer=[...next.values()].sort((a,b)=>rank(b)-rank(a)).slice(0,2200);
   }
 }
@@ -26,7 +26,7 @@ for(const [i,n] of B.nights.entries()){
   console.log('Stamp '+(i+1)+': '+s.turn+' turns');
 }
 for(const n of B.nights){
-  const route=solve(n,n[2].length)||solve(n);
+  const route=solve(n,n[2].length);
   assert.ok(route,'No verified path: '+n[0]);
   let s=B.start(n);
   for(const a of route){
@@ -61,5 +61,20 @@ while(w.served<waves[5]){
   assert.notEqual(next,w);
   w=next;
 }
+const gate=B.nights[12], g=B.start(gate);
+assert.ok(!B.actions(g,gate).some(a=>a[0]==='heat'));
+assert.deepEqual(B.step(g,gate,['gate',0]).baths.map(b=>b.base),[0,0]);
+assert.equal(B.step(g,gate,['gate',1]),g);
+assert.equal(solve(gate,gate[5],{ban:'gate'}),undefined,'The valve tutorial must need a valve');
+const pair=B.nights[14];
+let p=B.step(B.start(pair),pair,['seat',0]);
+assert.equal(p.baths[0].people[0].streak,0);
+p=B.step(p,pair,['seat',1]);
+assert.equal(p.baths[0].people[0].streak,0);
+const echo=B.nights[16];
+let e=B.step(B.step(B.start(echo),echo,['seat',0]),echo,['wait']);
+assert.equal(e.baths[0].echo,1);
+assert.equal(B.temp(e.baths[0]),1);
+assert.equal(B.step(e,echo,['wait']).baths[0].echo,0);
 }
 module.exports=solve;
