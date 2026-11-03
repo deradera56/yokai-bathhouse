@@ -1,5 +1,5 @@
 (() => {
-const {guests,nights,temp,start,step,actions,done}=Bath;
+const {guests,nights,specials,awards,temp,start,step,actions,done}=Bath;
 const app=document.querySelector('#app');
 const key='yokai-bathhouse-v1';
 function read(){try{return JSON.parse(localStorage.getItem(key))||{}}catch{return {}}}
@@ -7,6 +7,8 @@ const data=read();
 function readLanguage(){try{return localStorage.getItem(key+'-lang')??data.lang}catch{return data.lang}}
 const score=(d,i)=>Number.isInteger(d.best?.[i])&&d.best[i]>=0&&d.best[i]<=nights[i][2].length?d.best[i]:0;
 let lang=readLanguage()==='en'?1:0, best=nights.map((_,i)=>score(data,i));
+const savedStamps=(d,i)=>(Number.isInteger(d.stamps?.[i])?d.stamps[i]&3:0)|(score(d,i)===nights[i][2].length?1:0);
+let stamps=nights.map((_,i)=>savedStamps(data,i)), earned=0;
 let index=0,s=null,view='menu',message=null,recorded=false,saveFailed=false,guideOpen=false;
 let hintOpen=false,hintResult=null;
 let arrival=null;
@@ -34,10 +36,11 @@ function save(allowEmpty=false){
  try{
    const latest=read();
    best=best.map((v,i)=>Math.max(v,score(latest,i)));
+   stamps=stamps.map((v,i)=>v|savedStamps(latest,i));
    const owns=(latest.revision??null)===revision||(allowEmpty&&!latest.shift);
    conflict=!owns;
    const nextRevision=owns?String(Date.now())+'-'+Math.random():latest.revision;
-   localStorage.setItem(key,JSON.stringify({best,revision:nextRevision,shift:owns?shift:latest.shift}));
+   localStorage.setItem(key,JSON.stringify({best,stamps,revision:nextRevision,shift:owns?shift:latest.shift}));
    if(owns)revision=nextRevision;
    saveFailed=false;
  }catch{saveFailed=true}
@@ -153,12 +156,42 @@ function play(){
  ${guide()}`;
 }
 function undoButton(){return `<button data-nav="undo" ${previousTurn?'':'disabled'}>${tr('↶ 1手戻す','↶ Undo last turn')}</button>`}
+const stampGuests='YHKUF TZNFUHK'.replace(' ','');
+function stampRule(i){
+ const [limit,ban]=specials[i];
+ return limit?tr(`${limit}手以内に目標人数を満足させて閉店`,`Meet the goal and close within ${limit} turns`):
+   ({move:tr('客を移動させずにクリア','Clear without moving a bather'),heat:tr('釜で湯温を調整せずにクリア','Clear without adjusting the boiler'),wait:tr('「1手待つ」を使わずにクリア','Clear without using Wait a turn')})[ban];
+}
+function stampCard(i,bit){
+ const full=bit===1, got=Boolean(stamps[i]&bit);
+ const label=full?tr('全員満足','Full House'):specials[i][lang+2];
+ return `<div class="stamp-card ${got?'collected':''}">${got?doll(stampGuests[i], 'happy'):'<span class="stamp-seal" aria-hidden="true">◇</span>'}<div><small>${tr('第','NIGHT ')}${i+1}${tr('晩','')} · ${got?tr('獲得済み','Collected'):tr('未獲得','Uncollected')}</small><strong>${label}</strong><span>${full?tr(`全${nights[i][2].length}人を満足させる`,`Send all ${nights[i][2].length} guests home happy`):stampRule(i)}</span></div></div>`;
+}
+let albumOpen=false;
+function stampPanel(){
+ const count=stamps.reduce((sum,v)=>sum+Number(Boolean(v&1))+Number(Boolean(v&2)),0);
+ if(view==='menu')return `<details class="stamp-album" ${albumOpen?'open':''}><summary>${tr('おもてなし帳','Hospitality Album')} · ${count}/24</summary><p>${tr('各晩に2枚。札は任意で、次の晩の解放には通常クリアだけで十分です。','Two optional stamps per night. A regular clear is all you need to unlock the next night.')}</p><div class="stamp-grid">${nights.map((_,i)=>stampCard(i,1)+stampCard(i,2)).join('')}</div></details>`;
+ if(view==='result')return `<section class="stamp-result"><h2>${earned?tr('おもてなし札を獲得！','New hospitality stamp!'):tr('今夜のおもてなし札','Tonight’s stamps')}</h2><div class="stamp-grid">${stampCard(index,1)+stampCard(index,2)}</div></section>`;
+ const [limit,ban]=specials[index];
+ const flag={move:2,heat:4,wait:8}[ban];
+ const status=limit&&s.turn>limit||ban&&Number.isInteger(s.used)&&(s.used&flag)?tr('今回の挑戦条件は未達。通常クリアは可能です。','This challenge condition was missed. A regular clear is still possible.'):
+   ban&&!Number.isInteger(s.used)?tr('旧版からの中断データです。この札を狙うには今夜をやり直してください。','This shift was started in an older version. Restart the night to attempt this stamp.'):'';
+ return `<details class="night-stamps"><summary>${tr('今夜のおもてなし札','Tonight’s stamps')} · ${Number(Boolean(stamps[index]&1))+Number(Boolean(stamps[index]&2))}/2</summary><div class="stamp-grid">${stampCard(index,1)+stampCard(index,2)}</div>${status?`<p>${status}</p>`:''}</details>`;
+}
+function closeNight(){
+ const won=awards(s,n(),index);
+ earned=won&~stamps[index];stamps[index]|=won;
+ recorded=true;best[index]=Math.max(best[index],s.served);view='result';
+}
 function result(){
  const clear=s.served>=n()[5], final=clear&&index===11;
  return `<section class="panel result"><div class="stamp">${clear?'♨':'☾'}</div><h1>${final?tr('最後の灯がともる','The last lantern glows'):clear?tr('いい湯でした','A good soak'):tr('閉店です','Closing time')}</h1><p>${tr('満足して帰った妖怪','Happy guests')}: ${s.served} / ${n()[2].length} · ${tr('目標','Goal')} ${n()[5]}</p><p class="scene">${final?tr('湯上がりの瓶牛乳が、空の棚に並ぶ。小僧と河童が手を振った。また明日、同じ暖簾の下で。','Empty milk bottles line the shelf. The Kid and Kappa wave goodbye. See you tomorrow, under the same curtain.'):clear?tr('湯上がりの瓶牛乳が、今夜も売り切れた。','The last bottle of post-bath milk is gone.'):tr('客順を見て、湯船の空席を先に作ってみよう。','Look ahead in the queue and try leaving a seat free.')}</p><div class="row">${clear&&!final?`<button class="primary" data-level="${index+1}">${tr('次の晩','Next night')} →</button>`:''}<button data-level="${index}">${tr('もう一度','Play again')}</button><button data-nav="menu">${tr('営業日一覧','Night list')}</button></div></section>`;
 }
 function render(){
- const oldGuide=app.querySelector('details:not(.queue-panel)');
+ const oldGuide=app.querySelector('.guide');
+ const oldAlbum=app.querySelector('.stamp-album');
+ if(oldAlbum)albumOpen=oldAlbum.open;
+ const nightStampsOpen=app.querySelector('.night-stamps')?.open;
  const queueOpen=app.querySelector('.queue-panel')?.open;
  const steam=[...app.querySelectorAll('.bath .vapor')].map(el=>[el.closest('.bath').id,[...el.children].map(p=>p.getAnimations?.()[0]?.currentTime)]);
  if(oldGuide)guideOpen=oldGuide.open;
@@ -173,14 +206,22 @@ function render(){
    }
  }
  const newGuide=app.querySelector('details:not(.queue-panel)');
+ newGuide?.classList.add('guide');
+ if(view==='menu')app.querySelector('.hero').insertAdjacentHTML('afterend',stampPanel());
+ if(view==='play'){
+   app.querySelector('.hint-tools').insertAdjacentHTML('afterend',stampPanel());
+   if(nightStampsOpen)app.querySelector('.night-stamps').open=true;
+   if(s.served>=n()[5])app.querySelector('.baths + .row').insertAdjacentHTML('afterbegin',`<button class="primary" data-nav="close">${tr('目標達成・閉店する','Goal met · Close now')}</button>`);
+ }
  if(view==='result'){
    const row=app.querySelector('.result .row');
+   row.insertAdjacentHTML('afterend',stampPanel());
    const status=document.createElement('p');
-   status.textContent=s.served>=n()[5]
+   status.textContent=!previousTurn?tr('クリア！ 記録を保存しました。','Cleared! Your record was saved.'):s.served>=n()[5]
      ?tr('クリア！ 1手戻しても、最高記録と晩の解放は残ります。最後の手を戻せるのはこの画面を離れるまでです。','Cleared! Undo keeps your best score and unlocked nights. You can undo until you leave this screen.')
      :tr('目標未達。この画面を離れる前なら最後の手を戻せます。今夜を最初からやり直すこともできます。','Goal missed. You can undo before leaving this screen, or replay the whole night.');
    row.before(status);
-   row.insertAdjacentHTML('beforeend',undoButton());
+   if(previousTurn)row.insertAdjacentHTML('beforeend',undoButton());
  }
  if(queueOpen&&app.querySelector('.queue-panel'))app.querySelector('.queue-panel').open=true;
  if(newGuide){
@@ -209,6 +250,9 @@ app.addEventListener('click',async e=>{
    await begin(i);return;
  }
  const nav=b.dataset.nav;
+ if(nav==='close'&&view==='play'&&s.served>=n()[5]){
+   previousTurn=null;closeNight();await save();render();window.scrollTo(0,0);focusHeading();return;
+ }
  if(nav==='undo'&&previousTurn){
    const wasResult=view==='result';
    s=previousTurn;previousTurn=null;recorded=false;view='play';hintResult=null;arrival=null;
@@ -241,7 +285,7 @@ app.addEventListener('click',async e=>{
  if(s.lost>prev.lost)notices.push(['河童の皿が乾き、帰ってしまった。','Kappa’s plate dried out. He went home.']);
  if(s.lost>n()[2].length-n()[5])notices.push(['残り全員を満足させても目標には届きません。「1手戻す」か「今夜をやり直す」を選べます。','The goal is now out of reach. Try undoing the last turn, or restart the night.']);
  message=notices.length?[0,1].map(i=>notices.map(x=>x[i]).join(' ')):null;
- if(done(s,n())&&!recorded){recorded=true;best[index]=Math.max(best[index],s.served);view='result';window.scrollTo(0,0)}
+ if(done(s,n())&&!recorded){closeNight();window.scrollTo(0,0)}
  await save();render();
  document.querySelector('#announce').textContent=message?message[lang]:'';
  if(view==='result'){focusHeading();return}

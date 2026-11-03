@@ -42,9 +42,11 @@ const solve=require('./verify.cjs');
  await click('[data-nav="undo"]');
  assert.equal(await page.locator('.result').count(),0);
  await act(route.at(-1));
+ assert.equal(await page.locator('.stamp-result .collected').count(),2);
  await stale.locator('[data-nav=language]').click();
  await page.reload();
  assert.equal(await page.locator('html').getAttribute('lang'),'en');
+ assert.match(await page.locator('.stamp-album summary').innerText(),/2\/24/);
  assert.equal(await page.locator('.levels [data-level="1"]').isEnabled(),true);
  await stale.locator('.hero .primary').click();
  await stale.locator('[data-action="seat,0"]').click();
@@ -76,7 +78,7 @@ const solve=require('./verify.cjs');
      page.once('dialog',d=>d.accept());
      await click('[data-nav="retry"]');
    }
-   const commands=solve(nights[i],nights[i][2].length).map(a=>a.join(','));
+   const commands=(i===4?solve(nights[i],nights[i][5],{limit:8}):solve(nights[i],nights[i][2].length)).map(a=>a.join(','));
    await page.evaluate(async list=>{
      for(const command of list){
        const button=document.querySelector('[data-action="'+command+'"]');
@@ -91,6 +93,10 @@ const solve=require('./verify.cjs');
        if(button.isConnected)throw new Error('Action did not update: '+command);
      }
    },commands);
+   if(i===4){
+     await click('[data-nav="close"]');
+     assert.equal(await page.locator('.stamp-result .collected').count(),1);
+   }
    assert.equal(await page.locator('.result').count(),1);
    console.log('Night '+(i+1)+' passed');
  }

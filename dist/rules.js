@@ -24,7 +24,29 @@ const Bath = (() => {
   const clamp = n => Math.max(-1,Math.min(1,n));
   const temp = b => clamp(b.base+b.people.reduce((n,p)=>n+guests[p.id][3],0));
   const happy = (p,b) => temp(b)===guests[p.id][4] && (p.id!=='H'||b.people.length>=2);
-  const start = n => ({turn:0,served:0,lost:0,queue:n[2].split('').map(id=>({id,age:0})),baths:n[3].map(base=>({base,people:[]}))});
+  // Each night awards a full-house stamp and one optional challenge stamp.
+  // [maximum turns, forbidden action, Japanese title, English title]
+  const specials=[
+    [4,null,'手際よし','Quick Service'],
+    [null,'move','席替えなし','Stay Seated'],
+    [null,'heat','釜いらず','Untouched Boiler'],
+    [null,'wait','雨でも手際よく','Busy in the Rain'],
+    [8,null,'片釜の名人','Boiler Whisperer'],
+    [null,'move','天狗はそのまま','Settled Tengu'],
+    [8,null,'一槽の早業','One-Bath Wonder'],
+    [null,'wait','冷めぬ段取り','Keep It Moving'],
+    [10,null,'祭りの早仕舞い','Festival Sprint'],
+    [null,'wait','波に乗って','Ride the Wave'],
+    [9,null,'常連の呼吸','In Sync'],
+    [null,'heat','最後の灯をそのままに','Leave the Lantern Lit']
+  ];
+  const start = n => ({turn:0,served:0,lost:0,used:0,queue:n[2].split('').map(id=>({id,age:0})),baths:n[3].map(base=>({base,people:[]}))});
+  const mask={seat:1,move:2,heat:4,wait:8};
+  function awards(s,n,i){
+    const [limit,ban]=specials[i];
+    return (s.served===n[2].length?1:0)|
+      (s.served>=n[5]&&(!limit||s.turn<=limit)&&(!ban||(Number.isInteger(s.used)&&!(s.used&mask[ban])))?2:0);
+  }
   const done = (s,n) => s.turn>=n[4] || (!s.queue.length && s.baths.every(b=>!b.people.length));
   const actions = (s,n) => {
     if(done(s,n)) return [];
@@ -42,6 +64,7 @@ const Bath = (() => {
     if(!Array.isArray(a)||!actions(s,n).some(x=>x.length===a.length&&x.every((v,i)=>v===a[i]))) return s;
     const z={...s,queue:s.queue.map(p=>({...p})),baths:s.baths.map(b=>({...b,people:b.people.map(p=>({...p}))}))};
     const [type,i,k,j]=a;
+    if(Number.isInteger(s.used))z.used|=mask[type];
     if(type==='seat') z.baths[i].people.push({id:z.queue.shift().id,streak:0});
     if(type==='heat') z.baths[i].base+=k;
     if(type==='move') z.baths[j].people.push(z.baths[i].people.splice(k,1)[0]);
@@ -93,6 +116,6 @@ const Bath = (() => {
     }
     return {status:'unknown'};
   }
-  return {guests,nights,temp,happy,start,step,actions,done,hint};
+  return {guests,nights,specials,awards,temp,happy,start,step,actions,done,hint};
 })();
 if(typeof module!=='undefined') module.exports=Bath;

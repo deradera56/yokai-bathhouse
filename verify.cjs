@@ -1,10 +1,11 @@
 const assert = require('node:assert/strict');
 const B = require('./dist/rules.js');
-function solve(n, target=n[5]) {
+function solve(n, target=n[5], {limit=n[4],ban}={}) {
   let layer=[{s:B.start(n),path:[]}];
-  for(let t=0;t<n[4];t++){
+  for(let t=0;t<limit;t++){
     const next=new Map();
     for(const {s,path} of layer) for(const a of B.actions(s,n)){
+      if(a[0]===ban)continue;
       const z=B.step(s,n,a), route=[...path,a];
       if(z.served>=target)return route;
       if(z.lost>n[2].length-target||B.done(z,n))continue;
@@ -16,6 +17,14 @@ function solve(n, target=n[5]) {
   }
 }
 if(require.main===module){
+for(const [i,n] of B.nights.entries()){
+  const [limit,ban]=B.specials[i];
+  const route=solve(n,n[5],{limit:limit??n[4],ban});
+  assert.ok(route,'No challenge path: '+n[1]);
+  const s=route.reduce((z,a)=>B.step(z,n,a),B.start(n));
+  assert.ok(B.awards(s,n,i)&2,n[1]);
+  console.log('Stamp '+(i+1)+': '+s.turn+' turns');
+}
 for(const n of B.nights){
   const route=solve(n,n[2].length)||solve(n);
   assert.ok(route,'No verified path: '+n[0]);
