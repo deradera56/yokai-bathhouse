@@ -14,6 +14,7 @@ let hintOpen=false,hintResult=null;
 let arrival=null;
 const compact=matchMedia('(max-width: 600px) and (orientation: portrait), (max-width: 950px) and (max-height: 480px) and (orientation: landscape)');
 let activeBath=0,sheet=null,turnReport=null;
+let companionObserver=null;
 let previousTurn=null;
 const tr=(ja,en)=>lang?en:ja;
 const name=id=>guests[id][lang];
@@ -224,6 +225,21 @@ function compactSheet(legal){
  }
  return `<dialog class="play-sheet" aria-labelledby="sheet-title"><div class="sheet-head"><h2 id="sheet-title">${heading}</h2><button data-nav="sheet-close" autofocus>${tr('閉じる','Close')}</button></div><div class="sheet-content">${content}</div><button class="sheet-back" data-nav="sheet-close">${tr('盤面へ戻る','Back to board')}</button></dialog>`;
 }
+function companionBaths(){
+ if(s.baths.length<2)return '';
+ return `<div class="companion-space"><div class="companion-grid">${s.baths.map((b,i)=>{
+   if(i===activeBath)return '';
+   const t=temp(b), label=tr(`湯船${i+1}`,`Bath ${i+1}`);
+   const occupants=b.people.map(p=>name(p.id)).join(tr('・',', '));
+   const status=occupants||tr('空いています','Empty');
+   return `<div class="companion-bath ${t<0?'cold':t>0?'hot':''}">
+     <div class="companion-caption" aria-hidden="true"><strong>${label}</strong> <small>${temperature(t)}</small><span>${tr('切替','Switch')}</span></div>
+     ${bathScene(b,i)}
+     <div class="companion-guests" aria-hidden="true">${status}</div>
+     <button class="companion-select" data-companion="${i}" aria-label="${tr(`${label}に切り替え：${temperature(t)}、${status}`,`Switch to ${label}: ${temperature(t)}, ${status}`)}"></button>
+   </div>`;
+ }).join('')}</div></div>`;
+}
 function compactPlay(){
  const legal=actions(s,n()), head=s.queue[0], i=activeBath,b=s.baths[i];
  const seat=legal.find(a=>a[0]==='seat'&&a[1]===i);
@@ -246,17 +262,18 @@ function compactPlay(){
  <section class="compact-bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}" aria-label="${tr('湯船','Bath ')}${i+1}">
  ${bathScene(b,i)}
  <div class="compact-people">${b.people.map(p=>`<span>${name(p.id)} · ${p.streak}/2 · ${comfort(p,b)}</span>`).join('')||tr('空いています','Empty bath')}</div>
- <small>${tr('設定：','Setting: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
+ <small>${tr('操作中：湯船','Active: Bath ')}${i+1} · ${tr('設定：','Setting: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
  </section>
  <div class="compact-feedback"><div class="compact-preview" id="compact-preview">${seat?tr('案内すると：','If seated: ')+temperature(seating)+(later!==seating?tr(' → 手終了後：',' → After turn: ')+temperature(later):'')+(company?tr(' · 相席が必要',' · Needs company'):''):head?tr('満席です。別の湯船を選べます。','Bath full. Try another bath.') :tr('待つと入浴中の客の判定が進みます。','Waiting advances the bathers’ comfort checks.')}</div>
  ${index===0&&s.turn===0?`<div>${tr('雪女が入ると湯が冷えます。そのまま案内してみましょう。','The Snow Maiden cools the bath. Try seating her as it is.')}</div>`:''}
  ${report?`<div class="compact-note">${report}</div>`:''}${notice?`<div class="compact-note">${notice}</div>`:''}</div></div>
+ <div class="compact-footer-area">${companionBaths()}
  <div class="compact-bottom">
  <div class="compact-primary">${seat?action(seat,tr(`湯船${i+1}へ案内`,`Seat in Bath ${i+1}`),'primary','compact-preview',tr(`湯船${i+1}へ案内：${name(head.id)}`,`Seat in Bath ${i+1}: ${name(head.id)}`)):`<button class="primary" disabled>${tr('案内する','Seat guest')}</button>`}${action(['wait'],tr('1手待つ','Wait'))}${undoButton()}</div>
  <div class="compact-tools">
  ${[['adjust',tr('湯の操作','Bath controls')],['queue',tr('待ち列','Queue')],['hint',tr('ヒント','Hint')],['stamps',tr('札','Stamps')],['about',tr('情報','Info')]].map(([id,label])=>`<button data-sheet="${id}" aria-haspopup="dialog">${label}</button>`).join('')}
  </div>
- ${s.served>=n()[5]?`<button class="compact-close" data-nav="close">${tr('目標達成・閉店する','Goal met · Close now')}</button>`:''}</div>
+ ${s.served>=n()[5]?`<button class="compact-close" data-nav="close">${tr('目標達成・閉店する','Goal met · Close now')}</button>`:''}</div></div>
  ${compactSheet(legal)}
  </div>`;
 }
@@ -293,6 +310,7 @@ function result(){
  return `<section class="panel result"><div class="stamp">${clear?'♨':'☾'}</div><h1>${final?tr('瓶牛乳で乾杯','A Milk-Bottle Toast'):mainEnd?tr('最後の灯がともる','The last lantern glows'):clear?tr('いい湯でした','A good soak'):tr('閉店です','Closing time')}</h1><p>${tr('満足して帰った妖怪','Happy guests')}: ${s.served} / ${n()[2].length} · ${tr('目標','Goal')} ${n()[5]}</p><p class="scene">${final?tr('河童と一つ目小僧は瓶を合わせた。「また一緒に来ようね」','Kappa and the Kid clink their bottles. “Let’s come back together.”'):mainEnd?tr('湯上がりの瓶牛乳が、空の棚に並ぶ。小僧と河童が手を振った。また明日、同じ暖簾の下で。','Empty milk bottles line the shelf. The Kid and Kappa wave goodbye. See you tomorrow, under the same curtain.'):clear?tr('湯上がりの瓶牛乳が、今夜も売り切れた。','The last bottle of post-bath milk is gone.'):tr('客順を見て、湯船の空席を先に作ってみよう。','Look ahead in the queue and try leaving a seat free.')}</p>${final?toastArt():''}<div class="row">${clear&&!final?`<button class="primary" data-level="${index+1}">${mainEnd?tr('裏営業へ','Open After Hours'):tr('次の晩','Next night')} →</button>`:''}<button data-level="${index}">${tr('もう一度','Play again')}</button><button data-nav="menu">${tr('営業日一覧','Night list')}</button></div></section>`;
 }
 function render(){
+ companionObserver?.disconnect();companionObserver=null;
  const mobile=view==='play'&&compact.matches;
  const oldGuide=app.querySelector('.guide');
  const oldAlbum=app.querySelector('.stamp-album');
@@ -305,6 +323,20 @@ function render(){
  app.classList.toggle('compact-app',mobile);
  app.innerHTML=(mobile?'':top())+(view==='menu'?menu():view==='play'?(mobile?compactPlay():play()):result())+(!mobile&&(saveFailed||conflict)?`<p role="status">${saveFailed?tr('このブラウザでは進行を保存できません。','This browser could not save your progress.'):tr('別のタブの中断データを保持しています。最新の営業を再開するには、この画面を再読み込みしてください。','Another tab owns the saved shift. Reload this page to resume that shift.')}</p>`:'');
  arrival=null;
+ const companion=app.querySelector('.companion-space');
+ if(companion){
+   const grid=companion.firstElementChild;
+   const fit=()=>{
+     grid.removeAttribute('data-small');
+     if(grid.offsetHeight>companion.clientHeight)grid.dataset.small='true';
+     companion.dataset.fit=String(grid.offsetHeight>0&&grid.offsetHeight<=companion.clientHeight);
+   };
+   fit();
+   if(typeof ResizeObserver==='function'){
+     companionObserver=new ResizeObserver(fit);
+     companionObserver.observe(companion);companionObserver.observe(grid);
+   }
+ }
  for(const [id,times] of steam){
    const next=app.querySelector('#'+id+' .vapor');
    if(next?.childElementCount===times.length){
@@ -370,8 +402,8 @@ app.addEventListener('click',async e=>{
    if(!sheet)app.querySelector(`[data-bath="${i}"]`)?.focus({preventScroll:true});
    return;
  }
- if(b.dataset.bath!==undefined){
-   activeBath=Number(b.dataset.bath);render();app.querySelector(`[data-bath="${activeBath}"]`)?.focus({preventScroll:true});return;
+ if(b.dataset.bath!==undefined||b.dataset.companion!==undefined){
+   activeBath=Number(b.dataset.bath??b.dataset.companion);render();app.querySelector(`[data-bath="${activeBath}"]`)?.focus({preventScroll:true});return;
  }
  if(b.dataset.sheet){sheet=b.dataset.sheet;render();return}
  if(nav==='sheet-close'){dismissSheet();return}
