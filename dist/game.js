@@ -15,6 +15,11 @@ let arrival=null;
 const compact=matchMedia('(max-width: 600px) and (orientation: portrait), (max-width: 950px) and (max-height: 480px) and (orientation: landscape)');
 let activeBath=0,sheet=null,turnReport=null;
 let companionObserver=null;
+let pendingBathTap=null;
+function cancelBathTap(){
+ if(pendingBathTap){clearTimeout(pendingBathTap.timer);pendingBathTap.button?.classList.remove('tap-pending')}
+ pendingBathTap=null;
+}
 let previousTurn=null;
 const tr=(ja,en)=>lang?en:ja;
 const name=id=>guests[id][lang];
@@ -240,9 +245,19 @@ function companionBaths(){
      <div class="companion-caption" aria-hidden="true"><strong>${label}</strong>${tempBadge(t,tr('現在','Now'))}<span class="companion-switch">${tr('切替','Switch')}</span></div>
      ${bathScene(b,i)}
      <div class="companion-guests" aria-hidden="true">${status}</div>
-     <button class="companion-select" data-companion="${i}" aria-label="${tr(`${label}に切り替え：${temperature(t)}、${status}`,`Switch to ${label}: ${temperature(t)}, ${status}`)}"></button>
+     <button class="companion-select" data-companion="${i}" aria-describedby="bath-tap-guide" aria-label="${tr(`${label}に切り替え：${temperature(t)}、${status}`,`Switch to ${label}: ${temperature(t)}, ${status}`)}"></button>
    </div>`;
  }).join('')}</div></div>`;
+}
+function compactQueue(){
+ if(!s.queue.length)return `<p class="empty-queue">${tr('待っているお客さんはいません。','No guests are waiting.')}</p>`;
+ return `<ol class="compact-queue" aria-label="${tr('待っているお客さん','Waiting guests')}">${s.queue.slice(0,2).map((p,k)=>{
+   const [, , , effect, preferred]=guests[p.id];
+   return `<li class="queue-guest"><div class="queue-name"><small>${k?tr('その次','Then'):tr('次：','Next:')}</small><strong>${guestLabel(p.id)}</strong></div>
+   <div class="queue-fact"><span>${tr('好きな湯','Likes')}</span> <strong data-temp="${heatTone(preferred)}">${temperature(preferred)}</strong></div>
+   <div class="queue-fact"><span>${tr('入ると','On entry')}</span> <strong class="guest-effect ${effect>0?'heats':effect<0?'cools':''}">${effect>0?tr('↑ 湯を温める','↑ Heats water'):effect<0?tr('↓ 湯を冷ます','↓ Cools water'):tr('→ 湯温そのまま','→ No change')}</strong></div>
+   </li>`;
+ }).join('')}</ol>`;
 }
 function compactPlay(){
  const legal=actions(s,n()), head=s.queue[0], i=activeBath,b=s.baths[i];
@@ -259,19 +274,19 @@ function compactPlay(){
  return `<div class="compact-board">
  <div class="compact-heading"><h2>${index+1} · ${n()[lang]}</h2><button data-nav="menu">${tr('一覧','Night list')}</button></div>
  <section class="compact-overview" aria-label="${tr('営業状況','Shift overview')}" tabindex="-1">
- <div><strong>${head?tr('次：','Next: ')+guestLabel(head.id):tr('待ち客なし','Queue empty')}</strong> ${head?temperature(guests[head.id][4]):''}</div>
  <div><span>${tr('残り','Left')} ${n()[4]-s.turn} · ${tr('満足','Happy')} ${s.served}/${n()[5]}</span>${head?.id==='K'&&n()[6]?.dry?` <b class="deadline">${tr(`あと${3-head.age}手で帰る`,`Leaves in ${3-head.age}`)}</b>`:''}</div></section>
+ ${compactQueue()}
  ${saveFailed||conflict?`<div class="compact-note" role="status">${saveFailed?tr('進行を保存できません。','Progress could not be saved.'):tr('別タブが保存中です。このタブの中断は保存されません。','Another tab owns the save. This shift will not be saved here.')}</div>`:''}
- <div class="compact-tabs" role="group" aria-label="${tr('湯船を選ぶ','Choose a bath')}">${s.baths.map((bath,k)=>`<button data-bath="${k}" aria-pressed="${k===i}"><strong>${tr('湯船','Bath ')}${k+1}</strong><small data-temp="${heatTone(temp(bath))}">${temperature(temp(bath))} · ${tr('空','Free ')}${3-bath.people.length}</small><span class="tab-guests">${bath.people.map(p=>`<span title="${name(p.id)}">${guestLabel(p.id)}</span>`).join('')}${turnReport?.[k]?.length?'<span class="tab-departed" aria-hidden="true">✓</span>':''}</span></button>`).join('')}</div>
+ <div class="bath-tap-guide" id="bath-tap-guide">${tr('1回で選ぶ · 同じ湯船を2回タップで案内','Tap once to select · Tap the same bath twice to seat')}</div>
+ <div class="compact-tabs" role="group" aria-label="${tr('湯船を選ぶ','Choose a bath')}">${s.baths.map((bath,k)=>`<button data-bath="${k}" aria-pressed="${k===i}" aria-describedby="bath-tap-guide"><strong>${tr('湯船','Bath ')}${k+1}</strong><small data-temp="${heatTone(temp(bath))}">${temperature(temp(bath))} · ${tr('空','Free ')}${3-bath.people.length}</small><span class="tab-guests">${bath.people.map(p=>`<span title="${name(p.id)}">${guestLabel(p.id)}</span>`).join('')}${turnReport?.[k]?.length?'<span class="tab-departed" aria-hidden="true">✓</span>':''}</span></button>`).join('')}</div>
  <div class="compact-center" tabindex="0" role="region" aria-label="${tr('湯船と操作の予告','Bath and action forecast')}">
  <section class="compact-bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}" aria-label="${tr('湯船','Bath ')}${i+1}">
  <div class="active-bath-caption"><strong>${tr('操作中：湯船','Active: Bath ')}${i+1}</strong>${tempBadge(current,tr('現在','Now'))}</div>
- ${bathScene(b,i)}
+ <div class="active-bath-art">${bathScene(b,i)}<button class="active-bath-select" data-bath-card="${i}" aria-describedby="bath-tap-guide" aria-label="${tr(`湯船${i+1}：${temperature(current)}`,`Bath ${i+1}: ${temperature(current)}`)}"></button></div>
  <div class="compact-people">${b.people.map(p=>`<span>${name(p.id)} · ${p.streak}/2 · ${comfort(p,b)}</span>`).join('')||tr('空いています','Empty bath')}</div>
  <small>${tr('設定湯温：','Set temperature: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
  </section>
  <div class="compact-feedback"><div class="compact-preview" id="compact-preview">${seat?`${tempBadge(seating,tr(`湯船${i+1}へ案内した手の判定`,`Seating in Bath ${i+1}: check`))}${later!==seating?` ${tempBadge(later,tr('手終了後','After turn'))}`:''}${company?` <span class="preview-warning">${tr('相席が必要','Needs company')}</span>`:seating!==guests[head.id][4]?` <span class="preview-warning">${tr('客の好みと違う','Not the guest’s preferred temperature')}</span>`:''}`:head?tr('満席です。別の湯船を選べます。','Bath full. Try another bath.') :tr('待つと入浴中の客の判定が進みます。','Waiting advances the bathers’ comfort checks.')}</div>
- ${index===0&&s.turn===0?`<div>${tr('雪女が入ると湯が冷えます。そのまま案内してみましょう。','The Snow Maiden cools the bath. Try seating her as it is.')}</div>`:''}
  ${report?`<div class="compact-note">${report}</div>`:''}${notice?`<div class="compact-note">${notice}</div>`:''}</div></div>
  <div class="compact-footer-area">${companionBaths()}
  <div class="compact-bottom">
@@ -390,8 +405,12 @@ function render(){
  }
 }
 function focusHeading(){const h=app.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true})}}
-function resetCompact(){activeBath=0;sheet=null;turnReport=null}
+function resetCompact(){cancelBathTap();activeBath=0;sheet=null;turnReport=null}
 function dismissSheet(){const old=sheet;sheet=null;render();app.querySelector(`[data-sheet="${old}"]`)?.focus({preventScroll:true})}
+function selectBath(i){
+ activeBath=i;render();
+ app.querySelector(`[data-bath="${activeBath}"]`)?.focus({preventScroll:true});
+}
 async function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;previousTurn=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';resetCompact();await save(true);render();window.scrollTo(0,0);focusHeading()}
 let busy=false;
 app.addEventListener('click',async e=>{
@@ -399,6 +418,15 @@ app.addEventListener('click',async e=>{
  if(busy)return;
  busy=true;
  try{
+ let command=b.dataset.action;
+ const target=b.dataset.bath??b.dataset.companion??b.dataset.bathCard;
+ if(target===undefined){
+   const pending=pendingBathTap;
+   cancelBathTap();
+   if(pending?.kind==='companion'&&command?.startsWith('seat,')&&pending.i!==activeBath){
+     selectBath(pending.i);return;
+   }
+ }
  if(b.dataset.level!==undefined){
    const i=Number(b.dataset.level);
    if(suspended&&!confirm(tr('中断中の営業を上書きしますか？','Replace your suspended shift?')))return;
@@ -411,8 +439,26 @@ app.addEventListener('click',async e=>{
    if(!sheet)app.querySelector(`[data-bath="${i}"]`)?.focus({preventScroll:true});
    return;
  }
- if(b.dataset.bath!==undefined||b.dataset.companion!==undefined){
-   activeBath=Number(b.dataset.bath??b.dataset.companion);render();app.querySelector(`[data-bath="${activeBath}"]`)?.focus({preventScroll:true});return;
+ if(target!==undefined&&view==='play'&&compact.matches&&!sheet){
+   const i=Number(target), state=s;
+   const kind=b.dataset.bath!==undefined?'tab':b.dataset.companion!==undefined?'companion':'card';
+   const canSeat=actions(s,n()).some(a=>a[0]==='seat'&&a[1]===i);
+   const twice=pendingBathTap?.i===i&&pendingBathTap.kind===kind&&pendingBathTap.state===s&&performance.now()-pendingBathTap.at<=400;
+   cancelBathTap();
+   if(!e.detail){selectBath(i);return}
+   if(twice){
+     if(!canSeat){selectBath(i);return}
+     activeBath=i;command=`seat,${i}`;
+   }else{
+     // Wait briefly before moving cards so both taps can hit the same bath.
+     if(kind==='tab')selectBath(i);
+     else b.classList.add('tap-pending');
+     pendingBathTap={i,kind,state,button:b,at:performance.now(),timer:setTimeout(()=>{
+       cancelBathTap();
+       if(kind!=='tab'&&view==='play'&&compact.matches&&!sheet&&s===state)selectBath(i);
+     },400)};
+     return;
+   }
  }
  if(b.dataset.sheet){sheet=b.dataset.sheet;render();return}
  if(nav==='sheet-close'){dismissSheet();return}
@@ -441,8 +487,8 @@ app.addEventListener('click',async e=>{
  if(nav==='menu'){if(view==='play'){suspended={index,s,previousTurn};view='menu';await save()}else view='menu';render();window.scrollTo(0,0);focusHeading();return}
  if(nav==='resume'&&suspended){({index,s}=suspended);const p=suspended.previousTurn;previousTurn=validShift({index,s:p})&&p.turn===s.turn-1?p:null;suspended=null;recorded=false;message=null;view='play';resetCompact();await save();render();window.scrollTo(0,0);focusHeading();return}
  if(nav==='retry'){if(!s.turn||confirm(tr('今夜の進行をやり直しますか？','Restart this night?')))await begin(index);return}
- if(!b.dataset.action||view!=='play')return;
- const a=b.dataset.action.split(',').map((v,i)=>i?Number(v):v);
+ if(!command||view!=='play')return;
+ const a=command.split(',').map((v,i)=>i?Number(v):v);
  const prev=s,report={};s=step(s,n(),a,report);if(prev===s)return;
  const wasSheet=sheet;sheet=null;
  turnReport=report.departures;
@@ -460,7 +506,7 @@ app.addEventListener('click',async e=>{
  document.querySelector('#announce').textContent=message?message[lang]:'';
  if(view==='result'){focusHeading();return}
  if(compact.matches){
-   const next=wasSheet?app.querySelector('[data-sheet="adjust"]'):[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===b.dataset.action);
+   const next=wasSheet?app.querySelector('[data-sheet="adjust"]'):[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===command);
    (next||app.querySelector('.compact-overview'))?.focus({preventScroll:true});return;
  }
  const exact=a[0]!=='move'&&[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===b.dataset.action);
@@ -474,6 +520,6 @@ app.addEventListener('click',async e=>{
  }
  }finally{busy=false}
 });
-compact.addEventListener('change',()=>{if(view==='play'&&!busy){sheet=null;render();focusHeading()}});
+compact.addEventListener('change',()=>{cancelBathTap();if(view==='play'&&!busy){sheet=null;render();focusHeading()}});
 render();
 })();
