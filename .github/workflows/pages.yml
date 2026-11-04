@@ -36,8 +36,8 @@ jobs:
           server=$!
           trap 'kill "$server"' EXIT
           curl --fail --retry 8 --retry-connrefused --silent "$BATHHOUSE_URL" > /dev/null
-          npm run test:browser
           node mobile-test.cjs
+          npm run test:browser
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
