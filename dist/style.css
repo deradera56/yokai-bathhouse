@@ -80,7 +80,8 @@
 }
 .companion-grid[data-small=true] .bath-scene{height:54px}
 .companion-grid[data-small=true] .bathers .doll{height:47px}
-.companion-grid[data-summary=true] .bath-scene,.companion-grid[data-summary=true] .companion-switch{display:none}
+.companion-grid[data-summary] .bath-scene,.companion-grid[data-summary] .companion-switch{display:none}
+.companion-grid[data-summary=temperature] .companion-guests,.companion-grid[data-summary=temperature] .temp-context{display:none}
 @media(min-height:280px) and (max-height:520px){
  .compact-board{height:calc(100dvh - 8px - max(8px,env(safe-area-inset-bottom)));min-height:0}
  .compact-center{min-height:0;overflow:auto;overscroll-behavior:contain;align-content:start}

@@ -337,6 +337,7 @@ function render(){
      grid.removeAttribute('data-summary');
      if(grid.offsetHeight>companion.clientHeight)grid.dataset.small='true';
      if(grid.offsetHeight>companion.clientHeight)grid.dataset.summary='true';
+     if(grid.offsetHeight>companion.clientHeight)grid.dataset.summary='temperature';
      companion.dataset.fit=String(grid.offsetHeight>0&&grid.offsetHeight<=companion.clientHeight);
    };
    fit();
