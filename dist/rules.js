@@ -75,7 +75,7 @@ const Bath = (() => {
     });
     return a;
   };
-  const step = (s,n,a) => {
+  const step = (s,n,a,report) => {
     if(!Array.isArray(a)||!actions(s,n).some(x=>x.length===a.length&&x.every((v,i)=>v===a[i]))) return s;
     const z={...s,queue:s.queue.map(p=>({...p})),baths:s.baths.map(b=>({...b,people:b.people.map(p=>({...p}))}))};
     const [type,i,k,j]=a;
@@ -84,9 +84,11 @@ const Bath = (() => {
     if(type==='heat') z.baths[i].base+=k;
     if(type==='gate'){z.baths[i].base++;z.baths[1-i].base--;}
     if(type==='move') z.baths[j].people.push(z.baths[i].people.splice(k,1)[0]);
+    if(report){report.temperatures=z.baths.map(temp);report.departures=[]}
     z.turn++;
     for(const b of z.baths){
       for(const p of b.people) p.streak=happy(p,b,n)?p.streak+1:0;
+      if(report)report.departures.push(b.people.filter(p=>p.streak>=2).map(p=>p.id));
       if(n[6]?.echo)b.echo=b.people.reduce((sum,p)=>sum+(p.streak>=2?guests[p.id][3]:0),0);
       b.people=b.people.filter(p=>{if(p.streak<2)return true;z.served++;return false;});
     }

@@ -12,6 +12,8 @@ let stamps=nights.map((_,i)=>savedStamps(data,i)), earned=0;
 let index=0,s=null,view='menu',message=null,recorded=false,saveFailed=false,guideOpen=false;
 let hintOpen=false,hintResult=null;
 let arrival=null;
+const compact=matchMedia('(max-width: 600px) and (orientation: portrait), (max-width: 950px) and (max-height: 480px) and (orientation: landscape)');
+let activeBath=0,sheet=null,turnReport=null;
 let previousTurn=null;
 const tr=(ja,en)=>lang?en:ja;
 const name=id=>guests[id][lang];
@@ -189,6 +191,75 @@ function play(){
  ${guide()}`;
 }
 function undoButton(){return `<button data-nav="undo" ${previousTurn?'':'disabled'}>${tr('↶ 1手戻す','↶ Undo last turn')}</button>`}
+function compactSheet(legal){
+ if(!sheet)return '';
+ const b=s.baths[activeBath];
+ let heading,content;
+ if(sheet==='adjust'){
+   heading=tr(`湯船${activeBath+1}の操作`,`Bath ${activeBath+1} controls`);
+   const controls=legal.filter(a=>a[1]===activeBath&&['heat','gate','move'].includes(a[0]));
+   content=controls.map(a=>{
+     const [type,i,k,j]=a, forecast={},after=step(s,n(),a,forecast);
+     const label=type==='move'?tr(`席${k+1}：${name(b.people[k].id)} ${b.people[k].streak}/2 → 湯船${j+1}`,`Seat ${k+1}: ${name(b.people[k].id)} ${b.people[k].streak}/2 → Bath ${j+1}`):
+       type==='gate'?tr(`栓：湯船${i+1}を温め、湯船${2-i}を冷ます`,`Valve: heat Bath ${i+1}, cool Bath ${2-i}`):
+       k>0?tr('温める','Heat'):tr('冷ます','Cool');
+     const affected=type==='gate'?[0,1]:type==='move'?[i,j]:[i];
+     return `<div class="sheet-action">${action(a,label,'','forecast-'+a.join('-'))}<small id="forecast-${a.join('-')}">${affected.map(x=>{
+       const t=forecast.temperatures[x], end=temp(after.baths[x]);
+       return tr('湯船','Bath ')+(x+1)+'：'+tr('判定 ','Check ')+temperature(t)+(t!==end?tr(' → 手終了後 ',' → After turn ')+temperature(end):'');
+     }).join(' ／ ')}</small></div>`;
+   }).join('')||`<p>${tr('今この湯船でできる調整や移動はありません。','There are no adjustments or moves available for this bath.')}</p>`;
+ }else if(sheet==='queue'){
+   heading=tr('待ち列','Queue');
+   content=s.queue.length?`<ol>${s.queue.map(p=>`<li>${guestLabel(p.id)} · ${temperature(guests[p.id][4])}</li>`).join('')}</ol>`:`<p>${tr('待ち客なし','Queue empty')}</p>`;
+ }else if(sheet==='hint'){
+   heading=tr('ヒント','Hint');
+   content=`<p data-hint-answer tabindex="-1">${hintText()}</p>${hintResult?.status==='move'&&hintResult.action[0]!=='wait'?`<button data-nav="hint-show">${tr('対象の湯船を表示','Show the suggested bath')}</button>`:hintResult?'':`<button data-nav="hint-move">${tr('次の一手を見る','Show next move')}</button>`}`;
+ }else if(sheet==='stamps'){
+   heading=tr('今夜のおもてなし札','Tonight’s stamps');
+   content=stampPanel(true);
+ }else{
+   heading=tr('今夜の情報','About this night');
+   content=`<p>${stories[index]?.[lang]??nightStory()}</p>${nightRule()?`<p class="night-rule">${nightRule()}</p>`:''}${guide()}<div class="row"><button data-nav="retry">${tr('今夜をやり直す','Restart night')}</button><button data-nav="language">${tr('English','日本語')}</button></div>`;
+ }
+ return `<dialog class="play-sheet" aria-labelledby="sheet-title"><div class="sheet-head"><h2 id="sheet-title">${heading}</h2><button data-nav="sheet-close" autofocus>${tr('閉じる','Close')}</button></div><div class="sheet-content">${content}</div><button class="sheet-back" data-nav="sheet-close">${tr('盤面へ戻る','Back to board')}</button></dialog>`;
+}
+function compactPlay(){
+ const legal=actions(s,n()), head=s.queue[0], i=activeBath,b=s.baths[i];
+ const seat=legal.find(a=>a[0]==='seat'&&a[1]===i);
+ const seating=seat?temp({...b,people:[...b.people,head]}):null;
+ const later=seat?temp(step(s,n(),seat).baths[i]):null;
+ const company=seat&&n()[6]?.pair&&partner(head.id)?!b.people.some(p=>p.id===partner(head.id)):seat&&head.id==='H'&&!b.people.length;
+ const report=turnReport?.flatMap((ids,k)=>ids.length?[tr(`湯船${k+1}：${ids.map(name).join('・')}が満足して退浴`,`Bath ${k+1}: ${ids.map(name).join(', ')} left happy`)]:[]).join(tr(' ／ ',' · '));
+ const blocked=s.lost>n()[2].length-n()[5];
+ const canRecover=previousTurn&&previousTurn.lost<=n()[2].length-n()[5];
+ const notice=blocked?(canRecover?tr('目標未達が確定。「1手戻す」で直前の手を試し直せます。','Goal out of reach. Undo to try a different last move.'):tr('目標未達が確定。「情報」から今夜をやり直せます。','Goal out of reach. Restart this night from Info.')):
+   report&&s.lost>0?tr(`待ち列から帰った客：${s.lost}人`,`Walked out: ${s.lost}`):!report?message?.[lang]:'';
+ return `<div class="compact-board">
+ <div class="compact-heading"><h2>${index+1} · ${n()[lang]}</h2><button data-nav="menu">${tr('一覧','Night list')}</button></div>
+ <section class="compact-overview" aria-label="${tr('営業状況','Shift overview')}" tabindex="-1">
+ <div><strong>${head?tr('次：','Next: ')+guestLabel(head.id):tr('待ち客なし','Queue empty')}</strong> ${head?temperature(guests[head.id][4]):''}</div>
+ <div><span>${tr('残り','Left')} ${n()[4]-s.turn} · ${tr('満足','Happy')} ${s.served}/${n()[5]}</span>${head?.id==='K'&&n()[6]?.dry?` <b class="deadline">${tr(`あと${3-head.age}手で帰る`,`Leaves in ${3-head.age}`)}</b>`:''}</div></section>
+ ${saveFailed||conflict?`<div class="compact-note" role="status">${saveFailed?tr('進行を保存できません。','Progress could not be saved.'):tr('別タブが保存中です。このタブの中断は保存されません。','Another tab owns the save. This shift will not be saved here.')}</div>`:''}
+ <div class="compact-tabs" role="group" aria-label="${tr('湯船を選ぶ','Choose a bath')}">${s.baths.map((bath,k)=>`<button data-bath="${k}" aria-pressed="${k===i}"><strong>${tr('湯船','Bath ')}${k+1}</strong><small>${temperature(temp(bath))} · ${tr('空','Free ')}${3-bath.people.length}</small><span class="tab-guests">${bath.people.map(p=>`<span title="${name(p.id)}">${guestLabel(p.id)}</span>`).join('')}${turnReport?.[k]?.length?'<span class="tab-departed" aria-hidden="true">✓</span>':''}</span></button>`).join('')}</div>
+ <div class="compact-center" tabindex="0" role="region" aria-label="${tr('湯船と操作の予告','Bath and action forecast')}">
+ <section class="compact-bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}" aria-label="${tr('湯船','Bath ')}${i+1}">
+ ${bathScene(b,i)}
+ <div class="compact-people">${b.people.map(p=>`<span>${name(p.id)} · ${p.streak}/2 · ${comfort(p,b)}</span>`).join('')||tr('空いています','Empty bath')}</div>
+ <small>${tr('設定：','Setting: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
+ </section>
+ <div class="compact-feedback"><div class="compact-preview" id="compact-preview">${seat?tr('案内すると：','If seated: ')+temperature(seating)+(later!==seating?tr(' → 手終了後：',' → After turn: ')+temperature(later):'')+(company?tr(' · 相席が必要',' · Needs company'):''):head?tr('満席です。別の湯船を選べます。','Bath full. Try another bath.') :tr('待つと入浴中の客の判定が進みます。','Waiting advances the bathers’ comfort checks.')}</div>
+ ${index===0&&s.turn===0?`<div>${tr('雪女が入ると湯が冷えます。そのまま案内してみましょう。','The Snow Maiden cools the bath. Try seating her as it is.')}</div>`:''}
+ ${report?`<div class="compact-note">${report}</div>`:''}${notice?`<div class="compact-note">${notice}</div>`:''}</div></div>
+ <div class="compact-bottom">
+ <div class="compact-primary">${seat?action(seat,tr(`湯船${i+1}へ案内`,`Seat in Bath ${i+1}`),'primary','compact-preview',tr(`湯船${i+1}へ案内：${name(head.id)}`,`Seat in Bath ${i+1}: ${name(head.id)}`)):`<button class="primary" disabled>${tr('案内する','Seat guest')}</button>`}${action(['wait'],tr('1手待つ','Wait'))}${undoButton()}</div>
+ <div class="compact-tools">
+ ${[['adjust',tr('湯の操作','Bath controls')],['queue',tr('待ち列','Queue')],['hint',tr('ヒント','Hint')],['stamps',tr('札','Stamps')],['about',tr('情報','Info')]].map(([id,label])=>`<button data-sheet="${id}" aria-haspopup="dialog">${label}</button>`).join('')}
+ </div>
+ ${s.served>=n()[5]?`<button class="compact-close" data-nav="close">${tr('目標達成・閉店する','Goal met · Close now')}</button>`:''}</div>
+ ${compactSheet(legal)}
+ </div>`;
+}
 const stampGuests='YHKUFTZNFUHKFTKHUK';
 function stampRule(i){
  const [limit,ban]=specials[i];
@@ -201,7 +272,7 @@ function stampCard(i,bit){
  return `<div class="stamp-card ${got?'collected':''}">${got?doll(stampGuests[i], 'happy'):'<span class="stamp-seal" aria-hidden="true">◇</span>'}<div><small>${tr('第','NIGHT ')}${i+1}${tr('晩','')} · ${got?tr('獲得済み','Collected'):tr('未獲得','Uncollected')}</small><strong>${label}</strong><span>${full?tr(`全${nights[i][2].length}人を満足させる`,`Send all ${nights[i][2].length} guests home happy`):stampRule(i)}</span></div></div>`;
 }
 let albumOpen=false;
-function stampPanel(){
+function stampPanel(expanded=false){
  const count=stamps.reduce((sum,v)=>sum+Number(Boolean(v&1))+Number(Boolean(v&2)),0);
  if(view==='menu')return `<details class="stamp-album" ${albumOpen?'open':''}><summary>${tr('おもてなし帳','Hospitality Album')} · ${count}/${nights.length*2}</summary><p>${tr('各晩に2枚。札は任意で、次の晩の解放には通常クリアだけで十分です。','Two optional stamps per night. A regular clear is all you need to unlock the next night.')}</p><div class="stamp-grid">${nights.map((_,i)=>stampCard(i,1)+stampCard(i,2)).join('')}</div></details>`;
  if(view==='result')return `<section class="stamp-result"><h2>${earned?tr('おもてなし札を獲得！','New hospitality stamp!'):tr('今夜のおもてなし札','Tonight’s stamps')}</h2><div class="stamp-grid">${stampCard(index,1)+stampCard(index,2)}</div></section>`;
@@ -209,7 +280,8 @@ function stampPanel(){
  const flag={move:2,heat:4,wait:8}[ban];
  const status=limit&&s.turn>limit||ban&&Number.isInteger(s.used)&&(s.used&flag)?tr('今回の挑戦条件は未達。通常クリアは可能です。','This challenge condition was missed. A regular clear is still possible.'):
    ban&&!Number.isInteger(s.used)?tr('旧版からの中断データです。この札を狙うには今夜をやり直してください。','This shift was started in an older version. Restart the night to attempt this stamp.'):'';
- return `<details class="night-stamps"><summary>${tr('今夜のおもてなし札','Tonight’s stamps')} · ${Number(Boolean(stamps[index]&1))+Number(Boolean(stamps[index]&2))}/2</summary><div class="stamp-grid">${stampCard(index,1)+stampCard(index,2)}</div>${status?`<p>${status}</p>`:''}</details>`;
+ const cards=`<div class="stamp-grid">${stampCard(index,1)+stampCard(index,2)}</div>${status?`<p>${status}</p>`:''}`;
+ return expanded?cards:`<details class="night-stamps"><summary>${tr('今夜のおもてなし札','Tonight’s stamps')} · ${Number(Boolean(stamps[index]&1))+Number(Boolean(stamps[index]&2))}/2</summary>${cards}</details>`;
 }
 function closeNight(){
  const won=awards(s,n(),index);
@@ -221,6 +293,7 @@ function result(){
  return `<section class="panel result"><div class="stamp">${clear?'♨':'☾'}</div><h1>${final?tr('瓶牛乳で乾杯','A Milk-Bottle Toast'):mainEnd?tr('最後の灯がともる','The last lantern glows'):clear?tr('いい湯でした','A good soak'):tr('閉店です','Closing time')}</h1><p>${tr('満足して帰った妖怪','Happy guests')}: ${s.served} / ${n()[2].length} · ${tr('目標','Goal')} ${n()[5]}</p><p class="scene">${final?tr('河童と一つ目小僧は瓶を合わせた。「また一緒に来ようね」','Kappa and the Kid clink their bottles. “Let’s come back together.”'):mainEnd?tr('湯上がりの瓶牛乳が、空の棚に並ぶ。小僧と河童が手を振った。また明日、同じ暖簾の下で。','Empty milk bottles line the shelf. The Kid and Kappa wave goodbye. See you tomorrow, under the same curtain.'):clear?tr('湯上がりの瓶牛乳が、今夜も売り切れた。','The last bottle of post-bath milk is gone.'):tr('客順を見て、湯船の空席を先に作ってみよう。','Look ahead in the queue and try leaving a seat free.')}</p>${final?toastArt():''}<div class="row">${clear&&!final?`<button class="primary" data-level="${index+1}">${mainEnd?tr('裏営業へ','Open After Hours'):tr('次の晩','Next night')} →</button>`:''}<button data-level="${index}">${tr('もう一度','Play again')}</button><button data-nav="menu">${tr('営業日一覧','Night list')}</button></div></section>`;
 }
 function render(){
+ const mobile=view==='play'&&compact.matches;
  const oldGuide=app.querySelector('.guide');
  const oldAlbum=app.querySelector('.stamp-album');
  if(oldAlbum)albumOpen=oldAlbum.open;
@@ -229,7 +302,8 @@ function render(){
  const steam=[...app.querySelectorAll('.bath .vapor')].map(el=>[el.closest('.bath').id,[...el.children].map(p=>p.getAnimations?.()[0]?.currentTime)]);
  if(oldGuide)guideOpen=oldGuide.open;
  document.documentElement.lang=lang?'en':'ja';document.title=title();
- app.innerHTML=top()+(view==='menu'?menu():view==='play'?play():result())+(saveFailed||conflict?`<p role="status">${saveFailed?tr('このブラウザでは進行を保存できません。','This browser could not save your progress.'):tr('別のタブの中断データを保持しています。最新の営業を再開するには、この画面を再読み込みしてください。','Another tab owns the saved shift. Reload this page to resume that shift.')}</p>`:'');
+ app.classList.toggle('compact-app',mobile);
+ app.innerHTML=(mobile?'':top())+(view==='menu'?menu():view==='play'?(mobile?compactPlay():play()):result())+(!mobile&&(saveFailed||conflict)?`<p role="status">${saveFailed?tr('このブラウザでは進行を保存できません。','This browser could not save your progress.'):tr('別のタブの中断データを保持しています。最新の営業を再開するには、この画面を再読み込みしてください。','Another tab owns the saved shift. Reload this page to resume that shift.')}</p>`:'');
  arrival=null;
  for(const [id,times] of steam){
    const next=app.querySelector('#'+id+' .vapor');
@@ -241,10 +315,15 @@ function render(){
  const newGuide=app.querySelector('details:not(.queue-panel)');
  newGuide?.classList.add('guide');
  if(view==='menu')app.querySelector('.hero').insertAdjacentHTML('afterend',stampPanel());
- if(view==='play'){
+ if(view==='play'&&!mobile){
    app.querySelector('.hint-tools').insertAdjacentHTML('afterend',stampPanel());
    if(nightStampsOpen)app.querySelector('.night-stamps').open=true;
    if(s.served>=n()[5])app.querySelector('.baths + .row').insertAdjacentHTML('afterbegin',`<button class="primary" data-nav="close">${tr('目標達成・閉店する','Goal met · Close now')}</button>`);
+ }
+ const dialog=app.querySelector('.play-sheet');
+ if(dialog){
+   dialog.addEventListener('cancel',e=>{e.preventDefault();dismissSheet()});
+   dialog.showModal();
  }
  if(view==='result'){
    const row=app.querySelector('.result .row');
@@ -270,7 +349,9 @@ function render(){
  }
 }
 function focusHeading(){const h=app.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true})}}
-async function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;previousTurn=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';await save(true);render();window.scrollTo(0,0);focusHeading()}
+function resetCompact(){activeBath=0;sheet=null;turnReport=null}
+function dismissSheet(){const old=sheet;sheet=null;render();app.querySelector(`[data-sheet="${old}"]`)?.focus({preventScroll:true})}
+async function begin(i){if(!nights[i]||!unlocked(i))return;index=i;s=start(n());suspended=null;previousTurn=null;message=null;hintOpen=false;hintResult=null;recorded=false;view='play';resetCompact();await save(true);render();window.scrollTo(0,0);focusHeading()}
 let busy=false;
 app.addEventListener('click',async e=>{
  const b=e.target.closest('button');if(!b||b.disabled)return;
@@ -283,33 +364,48 @@ app.addEventListener('click',async e=>{
    await begin(i);return;
  }
  const nav=b.dataset.nav;
+ if(nav==='hint-show'&&sheet==='hint'&&hintResult?.status==='move'){
+   const [type,i]=hintResult.action;
+   activeBath=i;sheet=type==='seat'?null:'adjust';render();
+   if(!sheet)app.querySelector(`[data-bath="${i}"]`)?.focus({preventScroll:true});
+   return;
+ }
+ if(b.dataset.bath!==undefined){
+   activeBath=Number(b.dataset.bath);render();app.querySelector(`[data-bath="${activeBath}"]`)?.focus({preventScroll:true});return;
+ }
+ if(b.dataset.sheet){sheet=b.dataset.sheet;render();return}
+ if(nav==='sheet-close'){dismissSheet();return}
  if(nav==='close'&&view==='play'&&s.served>=n()[5]){
    previousTurn=null;closeNight();await save();render();window.scrollTo(0,0);focusHeading();return;
  }
  if(nav==='undo'&&previousTurn){
    const wasResult=view==='result';
-   s=previousTurn;previousTurn=null;recorded=false;view='play';hintResult=null;arrival=null;
+   s=previousTurn;previousTurn=null;recorded=false;view='play';hintResult=null;arrival=null;sheet=null;turnReport=null;
    message=['直前の1手を戻しました。次の手を打つと、またその手を戻せます。','Last turn undone. Make a move before you can undo again.'];
    await save(true);render();
    if(wasResult)window.scrollTo(0,0);
-   const target=app.querySelector('.overview');
-   target.tabIndex=-1;target.focus({preventScroll:true});
+   const target=app.querySelector('.overview,.compact-overview');
+   target.tabIndex=-1;target.focus({preventScroll:!compact.matches});
    document.querySelector('#announce').textContent=message[lang];
    return;
  }
  if(nav==='hint'||nav==='hint-move'){
    if(nav==='hint'){hintOpen=!hintOpen;if(!hintOpen)hintResult=null}
    else hintResult=Bath.hint(s,n());
-   render();app.querySelector('[data-nav="hint"]').focus({preventScroll:true});
+   render();app.querySelector('[data-nav="hint"]')?.focus({preventScroll:true});
+   if(sheet==='hint')app.querySelector('[data-hint-answer]')?.focus({preventScroll:true});
    document.querySelector('#announce').textContent=hintOpen?hintText():'';return;
  }
  if(nav==='language'){lang=1-lang;try{localStorage.setItem(key+'-lang',lang?'en':'ja')}catch{}render();app.querySelector('[data-nav="language"]').focus();return}
  if(nav==='menu'){if(view==='play'){suspended={index,s,previousTurn};view='menu';await save()}else view='menu';render();window.scrollTo(0,0);focusHeading();return}
- if(nav==='resume'&&suspended){({index,s}=suspended);const p=suspended.previousTurn;previousTurn=validShift({index,s:p})&&p.turn===s.turn-1?p:null;suspended=null;recorded=false;message=null;view='play';await save();render();window.scrollTo(0,0);focusHeading();return}
+ if(nav==='resume'&&suspended){({index,s}=suspended);const p=suspended.previousTurn;previousTurn=validShift({index,s:p})&&p.turn===s.turn-1?p:null;suspended=null;recorded=false;message=null;view='play';resetCompact();await save();render();window.scrollTo(0,0);focusHeading();return}
  if(nav==='retry'){if(!s.turn||confirm(tr('今夜の進行をやり直しますか？','Restart this night?')))await begin(index);return}
  if(!b.dataset.action||view!=='play')return;
  const a=b.dataset.action.split(',').map((v,i)=>i?Number(v):v);
- const prev=s;s=step(s,n(),a);if(prev===s)return;
+ const prev=s,report={};s=step(s,n(),a,report);if(prev===s)return;
+ const wasSheet=sheet;sheet=null;
+ turnReport=report.departures;
+ if(a[0]==='move'&&compact.matches)activeBath=a[3];
  previousTurn=prev;
  if(a[0]==='seat')arrival=[a[1],s.baths[a[1]].people.length-1];
  hintResult=null;
@@ -322,6 +418,10 @@ app.addEventListener('click',async e=>{
  await save();render();
  document.querySelector('#announce').textContent=message?message[lang]:'';
  if(view==='result'){focusHeading();return}
+ if(compact.matches){
+   const next=wasSheet?app.querySelector('[data-sheet="adjust"]'):[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===b.dataset.action);
+   (next||app.querySelector('.compact-overview'))?.focus({preventScroll:true});return;
+ }
  const exact=a[0]!=='move'&&[...app.querySelectorAll('button[data-action]')].find(x=>x.dataset.action===b.dataset.action);
  const bath=a[0]==='wait'?null:app.querySelector('#bath-'+a[1]);
  const focus=exact||bath?.querySelector('.actions button')||bath?.querySelector('h3')||app.querySelector('button[data-action="wait"]');
@@ -333,5 +433,6 @@ app.addEventListener('click',async e=>{
  }
  }finally{busy=false}
 });
+compact.addEventListener('change',()=>{if(view==='play'&&!busy){sheet=null;render();focusHeading()}});
 render();
 })();

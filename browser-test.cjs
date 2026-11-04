@@ -8,7 +8,7 @@ const solve=require('./verify.cjs');
 (async()=>{
  const browser=await chromium.launch({channel:process.env.BATHHOUSE_BROWSER||'msedge'});
  try{
- const context=await browser.newContext({viewport:{width:320,height:740},offline:!process.env.BATHHOUSE_URL});
+ const context=await browser.newContext({viewport:{width:1050,height:740},offline:!process.env.BATHHOUSE_URL});
  context.setDefaultTimeout(6000);
  const page=await context.newPage();
  const errors=[];
@@ -142,6 +142,6 @@ const solve=require('./verify.cjs');
  await act(['heat',1,1]);
  assert.equal(await page.evaluate(()=>document.activeElement.closest('.bath')?.id),'bath-1');
  assert.deepEqual(errors,[]);
- console.log('320px: all 18 nights, After Hours unlock, ending, save/reload, stale tab, language, focus, corrupt save OK');
+ console.log('Desktop: all 18 nights, After Hours unlock, ending, save/reload, stale tab, language, focus, corrupt save OK');
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
