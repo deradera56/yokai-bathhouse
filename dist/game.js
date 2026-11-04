@@ -234,6 +234,13 @@ function compactSheet(legal){
  }
  return `<dialog class="play-sheet" aria-labelledby="sheet-title"><div class="sheet-head"><h2 id="sheet-title">${heading}</h2><button data-nav="sheet-close" autofocus>${tr('閉じる','Close')}</button></div><div class="sheet-content">${content}</div><button class="sheet-back" data-nav="sheet-close">${tr('盤面へ戻る','Back to board')}</button></dialog>`;
 }
+function bathCardCaption(b,i,extra){
+ const label=tr(`湯船${i+1}`,`Bath ${i+1}`);
+ return `<div class="bath-card-caption ${extra}"><strong>${label}</strong>${tempBadge(temp(b),tr('現在','Now'))}<button class="bath-card-adjust" data-sheet="adjust" data-bath-adjust="${i}" aria-haspopup="dialog" aria-label="${tr(`湯の操作：${label}`,`Bath controls: ${label}`)}">${tr('湯の操作','Bath controls')}</button></div>`;
+}
+function bathCardSetting(b){
+ return `<small class="bath-card-setting">${tr('設定湯温：','Set temperature: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>`;
+}
 function companionBaths(){
  if(s.baths.length<2)return '';
  return `<div class="companion-space"><div class="companion-grid">${s.baths.map((b,i)=>{
@@ -242,9 +249,10 @@ function companionBaths(){
    const occupants=b.people.map(p=>name(p.id)).join(tr('・',', '));
    const status=occupants||tr('空いています','Empty');
    return `<div class="companion-bath ${t<0?'cold':t>0?'hot':''}">
-     <div class="companion-caption" aria-hidden="true"><strong>${label}</strong>${tempBadge(t,tr('現在','Now'))}<span class="companion-switch">${tr('切替','Switch')}</span></div>
+     ${bathCardCaption(b,i,'companion-caption')}
      ${bathScene(b,i)}
      <div class="companion-guests" aria-hidden="true">${status}</div>
+     ${bathCardSetting(b)}
      <button class="companion-select" data-companion="${i}" aria-describedby="bath-tap-guide" aria-label="${tr(`${label}に切り替え：${temperature(t)}、${status}`,`Switch to ${label}: ${temperature(t)}, ${status}`)}"></button>
    </div>`;
  }).join('')}</div></div>`;
@@ -262,10 +270,7 @@ function compactQueue(){
 function compactPlay(){
  const legal=actions(s,n()), head=s.queue[0], i=activeBath,b=s.baths[i];
  const seat=legal.find(a=>a[0]==='seat'&&a[1]===i);
- const seating=seat?temp({...b,people:[...b.people,head]}):null;
- const later=seat?temp(step(s,n(),seat).baths[i]):null;
  const current=temp(b);
- const company=seat&&n()[6]?.pair&&partner(head.id)?!b.people.some(p=>p.id===partner(head.id)):seat&&head.id==='H'&&!b.people.length;
  const report=turnReport?.flatMap((ids,k)=>ids.length?[tr(`湯船${k+1}：${ids.map(name).join('・')}が満足して退浴`,`Bath ${k+1}: ${ids.map(name).join(', ')} left happy`)]:[]).join(tr(' ／ ',' · '));
  const blocked=s.lost>n()[2].length-n()[5];
  const canRecover=previousTurn&&previousTurn.lost<=n()[2].length-n()[5];
@@ -279,20 +284,19 @@ function compactPlay(){
  ${saveFailed||conflict?`<div class="compact-note" role="status">${saveFailed?tr('進行を保存できません。','Progress could not be saved.'):tr('別タブが保存中です。このタブの中断は保存されません。','Another tab owns the save. This shift will not be saved here.')}</div>`:''}
  <div class="bath-tap-guide" id="bath-tap-guide">${tr('1回で選ぶ · 同じ湯船を2回タップで案内','Tap once to select · Tap the same bath twice to seat')}</div>
  <div class="compact-tabs" role="group" aria-label="${tr('湯船を選ぶ','Choose a bath')}">${s.baths.map((bath,k)=>`<button data-bath="${k}" aria-pressed="${k===i}" aria-describedby="bath-tap-guide"><strong>${tr('湯船','Bath ')}${k+1}</strong><small data-temp="${heatTone(temp(bath))}">${temperature(temp(bath))} · ${tr('空','Free ')}${3-bath.people.length}</small><span class="tab-guests">${bath.people.map(p=>`<span title="${name(p.id)}">${guestLabel(p.id)}</span>`).join('')}${turnReport?.[k]?.length?'<span class="tab-departed" aria-hidden="true">✓</span>':''}</span></button>`).join('')}</div>
- <div class="compact-center" tabindex="0" role="region" aria-label="${tr('湯船と操作の予告','Bath and action forecast')}">
+ <div class="compact-center" tabindex="0" role="region" aria-label="${tr('選んだ湯船','Selected bath')}">
  <section class="compact-bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}" aria-label="${tr('湯船','Bath ')}${i+1}">
- <div class="active-bath-caption"><strong>${tr('操作中：湯船','Active: Bath ')}${i+1}</strong>${tempBadge(current,tr('現在','Now'))}</div>
+ ${bathCardCaption(b,i,'active-bath-caption')}
  <div class="active-bath-art">${bathScene(b,i)}<button class="active-bath-select" data-bath-card="${i}" aria-describedby="bath-tap-guide" aria-label="${tr(`湯船${i+1}：${temperature(current)}`,`Bath ${i+1}: ${temperature(current)}`)}"></button></div>
  <div class="compact-people">${b.people.map(p=>`<span>${name(p.id)} · ${p.streak}/2 · ${comfort(p,b)}</span>`).join('')||tr('空いています','Empty bath')}</div>
- <small>${tr('設定湯温：','Set temperature: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
+ ${bathCardSetting(b)}
  </section>
- <div class="compact-feedback"><div class="compact-preview" id="compact-preview">${seat?`${tempBadge(seating,tr(`湯船${i+1}へ案内した手の判定`,`Seating in Bath ${i+1}: check`))}${later!==seating?` ${tempBadge(later,tr('手終了後','After turn'))}`:''}${company?` <span class="preview-warning">${tr('相席が必要','Needs company')}</span>`:seating!==guests[head.id][4]?` <span class="preview-warning">${tr('客の好みと違う','Not the guest’s preferred temperature')}</span>`:''}`:head?tr('満席です。別の湯船を選べます。','Bath full. Try another bath.') :tr('待つと入浴中の客の判定が進みます。','Waiting advances the bathers’ comfort checks.')}</div>
- ${report?`<div class="compact-note">${report}</div>`:''}${notice?`<div class="compact-note">${notice}</div>`:''}</div></div>
+ ${report||notice?`<div class="compact-feedback">${report?`<div class="compact-note">${report}</div>`:''}${notice?`<div class="compact-note">${notice}</div>`:''}</div>`:''}</div>
  <div class="compact-footer-area">${companionBaths()}
  <div class="compact-bottom">
- <div class="compact-primary">${seat?action(seat,tr(`湯船${i+1}へ案内`,`Seat in Bath ${i+1}`),'primary','compact-preview',tr(`湯船${i+1}へ案内：${name(head.id)}`,`Seat in Bath ${i+1}: ${name(head.id)}`)):`<button class="primary" disabled>${tr('案内する','Seat guest')}</button>`}${action(['wait'],tr('1手待つ','Wait'))}${undoButton()}</div>
+ <div class="compact-primary">${seat?action(seat,tr(`湯船${i+1}へ案内`,`Seat in Bath ${i+1}`),'primary','',tr(`湯船${i+1}へ案内：${name(head.id)}`,`Seat in Bath ${i+1}: ${name(head.id)}`)):`<button class="primary" disabled>${head?tr('満席','Bath full'):tr('待ち客なし','No guests waiting')}</button>`}${action(['wait'],tr('1手待つ','Wait'))}${undoButton()}</div>
  <div class="compact-tools">
- ${[['adjust',tr('湯の操作','Bath controls')],['queue',tr('待ち列','Queue')],['hint',tr('ヒント','Hint')],['stamps',tr('札','Stamps')],['about',tr('情報','Info')]].map(([id,label])=>`<button data-sheet="${id}" aria-haspopup="dialog">${label}</button>`).join('')}
+ ${[['queue',tr('待ち列','Queue')],['hint',tr('ヒント','Hint')],['stamps',tr('札','Stamps')],['about',tr('情報','Info')]].map(([id,label])=>`<button data-sheet="${id}" aria-haspopup="dialog">${label}</button>`).join('')}
  </div>
  ${s.served>=n()[5]?`<button class="compact-close" data-nav="close">${tr('目標達成・閉店する','Goal met · Close now')}</button>`:''}</div></div>
  ${compactSheet(legal)}
@@ -460,7 +464,10 @@ app.addEventListener('click',async e=>{
      return;
    }
  }
- if(b.dataset.sheet){sheet=b.dataset.sheet;render();return}
+ if(b.dataset.sheet){
+   if(b.dataset.bathAdjust!==undefined)activeBath=Number(b.dataset.bathAdjust);
+   sheet=b.dataset.sheet;render();return;
+ }
  if(nav==='sheet-close'){dismissSheet();return}
  if(nav==='close'&&view==='play'&&s.served>=n()[5]){
    previousTurn=null;closeNight();await save();render();window.scrollTo(0,0);focusHeading();return;
