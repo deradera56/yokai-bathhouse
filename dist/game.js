@@ -19,6 +19,10 @@ let previousTurn=null;
 const tr=(ja,en)=>lang?en:ja;
 const name=id=>guests[id][lang];
 const temperature=t=>[tr('❄ ぬる湯','❄ Cool'),'≈ '+tr('適温','Warm'),tr('♨ 熱湯','♨ Hot')][t+1];
+const heatTone=t=>t<0?'cool':t>0?'hot':'warm';
+function tempBadge(t,context=''){
+ return `<span class="temp-badge" data-temp="${heatTone(t)}">${context?`<span class="temp-context">${context}</span>`:''}<strong>${temperature(t)}</strong></span>`;
+}
 const n=()=>nights[index];
 const unlocked=i=>i===0||best[i-1]>=nights[i-1][5];
 const int=(v,min,max)=>Number.isInteger(v)&&v>=min&&v<=max;
@@ -233,7 +237,7 @@ function companionBaths(){
    const occupants=b.people.map(p=>name(p.id)).join(tr('・',', '));
    const status=occupants||tr('空いています','Empty');
    return `<div class="companion-bath ${t<0?'cold':t>0?'hot':''}">
-     <div class="companion-caption" aria-hidden="true"><strong>${label}</strong> <small>${temperature(t)}</small><span>${tr('切替','Switch')}</span></div>
+     <div class="companion-caption" aria-hidden="true"><strong>${label}</strong>${tempBadge(t,tr('現在','Now'))}<span class="companion-switch">${tr('切替','Switch')}</span></div>
      ${bathScene(b,i)}
      <div class="companion-guests" aria-hidden="true">${status}</div>
      <button class="companion-select" data-companion="${i}" aria-label="${tr(`${label}に切り替え：${temperature(t)}、${status}`,`Switch to ${label}: ${temperature(t)}, ${status}`)}"></button>
@@ -245,6 +249,7 @@ function compactPlay(){
  const seat=legal.find(a=>a[0]==='seat'&&a[1]===i);
  const seating=seat?temp({...b,people:[...b.people,head]}):null;
  const later=seat?temp(step(s,n(),seat).baths[i]):null;
+ const current=temp(b);
  const company=seat&&n()[6]?.pair&&partner(head.id)?!b.people.some(p=>p.id===partner(head.id)):seat&&head.id==='H'&&!b.people.length;
  const report=turnReport?.flatMap((ids,k)=>ids.length?[tr(`湯船${k+1}：${ids.map(name).join('・')}が満足して退浴`,`Bath ${k+1}: ${ids.map(name).join(', ')} left happy`)]:[]).join(tr(' ／ ',' · '));
  const blocked=s.lost>n()[2].length-n()[5];
@@ -257,14 +262,15 @@ function compactPlay(){
  <div><strong>${head?tr('次：','Next: ')+guestLabel(head.id):tr('待ち客なし','Queue empty')}</strong> ${head?temperature(guests[head.id][4]):''}</div>
  <div><span>${tr('残り','Left')} ${n()[4]-s.turn} · ${tr('満足','Happy')} ${s.served}/${n()[5]}</span>${head?.id==='K'&&n()[6]?.dry?` <b class="deadline">${tr(`あと${3-head.age}手で帰る`,`Leaves in ${3-head.age}`)}</b>`:''}</div></section>
  ${saveFailed||conflict?`<div class="compact-note" role="status">${saveFailed?tr('進行を保存できません。','Progress could not be saved.'):tr('別タブが保存中です。このタブの中断は保存されません。','Another tab owns the save. This shift will not be saved here.')}</div>`:''}
- <div class="compact-tabs" role="group" aria-label="${tr('湯船を選ぶ','Choose a bath')}">${s.baths.map((bath,k)=>`<button data-bath="${k}" aria-pressed="${k===i}"><strong>${tr('湯船','Bath ')}${k+1}</strong><small>${temperature(temp(bath))} · ${tr('空','Free ')}${3-bath.people.length}</small><span class="tab-guests">${bath.people.map(p=>`<span title="${name(p.id)}">${guestLabel(p.id)}</span>`).join('')}${turnReport?.[k]?.length?'<span class="tab-departed" aria-hidden="true">✓</span>':''}</span></button>`).join('')}</div>
+ <div class="compact-tabs" role="group" aria-label="${tr('湯船を選ぶ','Choose a bath')}">${s.baths.map((bath,k)=>`<button data-bath="${k}" aria-pressed="${k===i}"><strong>${tr('湯船','Bath ')}${k+1}</strong><small data-temp="${heatTone(temp(bath))}">${temperature(temp(bath))} · ${tr('空','Free ')}${3-bath.people.length}</small><span class="tab-guests">${bath.people.map(p=>`<span title="${name(p.id)}">${guestLabel(p.id)}</span>`).join('')}${turnReport?.[k]?.length?'<span class="tab-departed" aria-hidden="true">✓</span>':''}</span></button>`).join('')}</div>
  <div class="compact-center" tabindex="0" role="region" aria-label="${tr('湯船と操作の予告','Bath and action forecast')}">
  <section class="compact-bath ${temp(b)<0?'cold':temp(b)>0?'hot':''}" aria-label="${tr('湯船','Bath ')}${i+1}">
+ <div class="active-bath-caption"><strong>${tr('操作中：湯船','Active: Bath ')}${i+1}</strong>${tempBadge(current,tr('現在','Now'))}</div>
  ${bathScene(b,i)}
  <div class="compact-people">${b.people.map(p=>`<span>${name(p.id)} · ${p.streak}/2 · ${comfort(p,b)}</span>`).join('')||tr('空いています','Empty bath')}</div>
- <small>${tr('操作中：湯船','Active: Bath ')}${i+1} · ${tr('設定：','Setting: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
+ <small>${tr('設定湯温：','Set temperature: ')}${temperature(b.base)}${b.echo?` · ${tr('残り湯：次の1手のみ','Lingering effect: next turn only')} ${b.echo>0?'+':''}${b.echo}`:''}</small>
  </section>
- <div class="compact-feedback"><div class="compact-preview" id="compact-preview">${seat?tr('案内すると：','If seated: ')+temperature(seating)+(later!==seating?tr(' → 手終了後：',' → After turn: ')+temperature(later):'')+(company?tr(' · 相席が必要',' · Needs company'):''):head?tr('満席です。別の湯船を選べます。','Bath full. Try another bath.') :tr('待つと入浴中の客の判定が進みます。','Waiting advances the bathers’ comfort checks.')}</div>
+ <div class="compact-feedback"><div class="compact-preview" id="compact-preview">${seat?`${tempBadge(seating,tr(`湯船${i+1}へ案内した手の判定`,`Seating in Bath ${i+1}: check`))}${later!==seating?` ${tempBadge(later,tr('手終了後','After turn'))}`:''}${company?` <span class="preview-warning">${tr('相席が必要','Needs company')}</span>`:seating!==guests[head.id][4]?` <span class="preview-warning">${tr('客の好みと違う','Not the guest’s preferred temperature')}</span>`:''}`:head?tr('満席です。別の湯船を選べます。','Bath full. Try another bath.') :tr('待つと入浴中の客の判定が進みます。','Waiting advances the bathers’ comfort checks.')}</div>
  ${index===0&&s.turn===0?`<div>${tr('雪女が入ると湯が冷えます。そのまま案内してみましょう。','The Snow Maiden cools the bath. Try seating her as it is.')}</div>`:''}
  ${report?`<div class="compact-note">${report}</div>`:''}${notice?`<div class="compact-note">${notice}</div>`:''}</div></div>
  <div class="compact-footer-area">${companionBaths()}
@@ -328,7 +334,9 @@ function render(){
    const grid=companion.firstElementChild;
    const fit=()=>{
      grid.removeAttribute('data-small');
+     grid.removeAttribute('data-summary');
      if(grid.offsetHeight>companion.clientHeight)grid.dataset.small='true';
+     if(grid.offsetHeight>companion.clientHeight)grid.dataset.summary='true';
      companion.dataset.fit=String(grid.offsetHeight>0&&grid.offsetHeight<=companion.clientHeight);
    };
    fit();
