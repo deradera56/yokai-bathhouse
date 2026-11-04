@@ -87,14 +87,14 @@
  .companion-bath{position:relative;min-width:0;padding:4px 6px 5px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
  .companion-bath .bath-scene{height:54px;margin-top:3px}
  .companion-bath .bathers .doll{height:47px}
- .companion-guests{color:var(--muted);font-size:.75rem;line-height:1.2;margin-top:3px;overflow-wrap:anywhere}
+ .companion-guests{overflow-wrap:anywhere}
  .companion-select{position:absolute;inset:0;z-index:1;min-height:44px;padding:0;border:0;background:transparent}
  .companion-select:hover:not(:disabled){background:#ffffff0c}
  .companion-select:focus-visible{outline-offset:-3px}
 }
 @container (min-height:160px){
- .companion-bath .bath-scene{height:clamp(88px,calc(100cqh - 67px),150px)}
- .companion-bath .bathers .doll{height:70px}
+ .companion-bath .bath-scene{height:clamp(88px,calc(100cqh - 67px),103px)}
+ .companion-bath .bathers .doll{height:76px}
 }
 .companion-grid[data-small=true] .bath-scene{height:54px}
 .companion-grid[data-small=true] .bathers .doll{height:47px}

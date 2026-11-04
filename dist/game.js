@@ -251,7 +251,7 @@ function companionBaths(){
    return `<div class="companion-bath ${t<0?'cold':t>0?'hot':''}">
      ${bathCardCaption(b,i,'companion-caption')}
      ${bathScene(b,i)}
-     <div class="companion-guests" aria-hidden="true">${status}</div>
+     <div class="compact-people companion-guests" aria-hidden="true">${status}</div>
      ${bathCardSetting(b)}
      <button class="companion-select" data-companion="${i}" aria-describedby="bath-tap-guide" aria-label="${tr(`${label}に切り替え：${temperature(t)}、${status}`,`Switch to ${label}: ${temperature(t)}, ${status}`)}"></button>
    </div>`;

@@ -58,6 +58,8 @@ const {nights}=require('./dist/rules.js');
  await page.setViewportSize({width:390,height:844});
  await page.locator('[data-companion="1"]').waitFor();
  assert.match(await page.locator('.companion-caption .temp-badge').innerText(),/現在\s*≈ 適温/);
+ assert.equal(await page.locator('.companion-bath .bath-scene').evaluate(el=>el.offsetHeight),await page.locator('.compact-bath .bath-scene').evaluate(el=>el.offsetHeight));
+ assert.equal(await page.locator('.companion-guests').evaluate(el=>getComputedStyle(el).justifyContent),'center');
  assert.equal(await page.locator('.compact-bottom [data-sheet="adjust"]').count(),0);
  await click('.companion-caption [data-bath-adjust="1"]');
  assert.match(await page.locator('.play-sheet h2').innerText(),/湯船2の操作/);
