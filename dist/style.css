@@ -20,6 +20,7 @@
 .compact-tabs button{flex:1;min-width:0;display:grid;place-content:center;line-height:1.15;padding:4px;font-size:inherit;text-align:center;gap:3px}
 .compact-tabs button[aria-pressed=true]{border:2px solid var(--gold);background:#3c4f49}
 .tab-guests{display:flex;gap:2px;justify-content:center;align-items:center;min-height:18px}
+.tab-guests:empty{display:none}
 .tab-guests .portrait{font-size:0}
 .tab-guests .portrait svg{width:18px;height:18px}
 .tab-departed{color:var(--gold);font-weight:bold}
